@@ -1,4 +1,4 @@
-all: link
+all: run
 
 assemble:
 	as -o _start.o _start.s
