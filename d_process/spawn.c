@@ -1,4 +1,6 @@
+#include <signal.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -7,6 +9,7 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <stdlib.h>
+
 extern char **environ;
 
 struct PsFile {
@@ -32,7 +35,7 @@ struct PsFile new_file(){
 
 void ps(int fd){
     char *argv[] = {"/usr/bin/ps", "-eo", "pid,pri,ni,stat,%cpu,cmd", "--sort=-%cpu", NULL};
-    
+
     // Duplicate fd to stdout before execve
     if (fd != STDOUT_FILENO) {
         if (dup2(fd, STDOUT_FILENO) == -1) {
@@ -40,61 +43,91 @@ void ps(int fd){
             return;
         }
     }
-    
+
     execve("/usr/bin/ps", argv, environ);
     // If we get here, execve failed
     perror("execve");
 }
 
-void ps_thread(void){
-    for (uint64_t f = 1; f <= 1000; f++){
+struct PsThread {
+    uint16_t n;
+    uint16_t p;
+} PsThread;
+
+void *ps_thread(void* arg){
+    struct PsThread *pt = (struct PsThread *) arg;
+
+    for (uint64_t f = 1; f <= pt->n; f++){
         printf("Running ps iteration %lu\n", f);
-        struct PsFile ps_file = new_file();
-        
-        if (ps_file.fd == -1) {
+        struct PsFile fth_ps_file = new_file();
+
+        if (fth_ps_file.fd == -1) {
             perror("Failed to create file");
             continue;
         }
-        
-        pid_t child_pid = fork();
-        
-        if (child_pid == -1) {
+
+        pid_t fth_ps_pid = fork();
+
+        if (fth_ps_pid == -1) {
             // Fork failed
             perror("fork");
-            close(ps_file.fd);
-            remove(ps_file.str);
+            close(fth_ps_file.fd);
+            remove(fth_ps_file.str);
             continue;
-        } 
-        else if (child_pid == 0) {
+        }
+        else if (fth_ps_pid == 0) {
             // Child process
-            ps(ps_file.fd);
+            ps(fth_ps_file.fd);
             // Should not reach here unless execve fails
             exit(1);
-        } 
+        }
         else {
             // Parent process
             int status;
-            waitpid(child_pid, &status, 0);
-            close(ps_file.fd);
-            
+            waitpid(fth_ps_pid, &status, 0);
+            close(fth_ps_file.fd);
+
             // Sleep between iterations
             sleep(1);
         }
     }
+
+    return NULL;
 }
 
 int main() {
-    pthread_t thread;
-    if (pthread_create(&thread, NULL, (void *(*)(void *))ps_thread, NULL) != 0) {
-        perror("pthread_create");
-        return 1;
+    uint8_t nof_pp_o = 1; //nof_parallel_processes_o
+    uint8_t nof_pp_s = 1; //nof_parallel_processes_s
+    uint8_t nof_pp_m = 1; //nof_parallel_processes_max
+
+
+
+    for (uint8_t pp = nof_pp_o; pp <= nof_pp_m; pp = pp + nof_pp_s){
+        pid_t pa_pid[pp] = {};
+        for (uint8_t p = 1; p <= pp; p++){
+            pa_pid[p] = fork();
+        }
+
+        if (pp == 1 && getpid() != 0){
+            struct PsThread pt_arg =  {
+                .n = 10,
+                .p = pp,
+            };
+
+            pthread_t thread;
+            if (pthread_create(&thread, NULL, ps_thread, (void *)&pt_arg) != 0) {
+                perror("pthread_create");
+                return 1;
+            }
+            pthread_join(thread, NULL);
+
+            for (uint8_t p = 1; p <= pp; p++){
+                kill(pa_pid[p],9);
+            }
+        } else {
+            while(1){}
+        }
     }
 
-    // Wait for the thread to finish
-    pthread_join(thread, NULL);
-
-    // pthread_create(pthread_t *restrict newthread, const pthread_attr_t *restrict attr, void *(*start_routine)(void *), void *restrict arg)
-    // pid_t
-    // fork();
     return 0;
 }
