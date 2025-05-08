@@ -68,24 +68,11 @@ void* thread_function(void* arg) {
 
     for (i = 0; i < 1000000; i++) {
         // Lock the mutex
-        printf("Thread %d trying to lock mutex\n", id);
         mufutex_lock(&mutex);
 
-        // Critical section
-        printf("Thread %d entered critical section, counter = %d\n", id, shared_counter);
         shared_counter++;
 
-        // // Simulate some work
-        // usleep(100000);  // Sleep for 100ms
-
-        printf("Thread %d leaving critical section, counter = %d\n", id, shared_counter);
-
-        // Unlock the mutex
         mufutex_unlock(&mutex);
-        printf("Thread %d released mutex\n", id);
-
-        // // Non-critical section - sleep a bit
-        // usleep(50000);  // Sleep for 50ms
     }
 
     return NULL;
@@ -98,13 +85,11 @@ int main() {
 
     // Initialize mutex
     mufutex_init(&mutex);
-    printf("Mutex initialized\n");
 
     // Create threads
     for (i = 0; i < 4; i++) {
         thread_ids[i] = i;
         if (pthread_create(&threads[i], NULL, thread_function, &thread_ids[i]) != 0) {
-            perror("pthread_create failed");
             exit(EXIT_FAILURE);
         }
     }
@@ -113,8 +98,6 @@ int main() {
     for (i = 0; i < 4; i++) {
         pthread_join(threads[i], NULL);
     }
-
-    printf("All threads completed. Final counter value: %d\n", shared_counter);
 
     return 0;
 }
