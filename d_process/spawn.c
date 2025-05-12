@@ -21,9 +21,9 @@ struct PsFile {
 struct PsFile new_file(){
     time_t timestamp;
     time(&timestamp);
-    char timestamp_str[35];
+    char timestamp_str[39];
     struct tm *tm_info = localtime(&timestamp);
-    strftime(timestamp_str, sizeof(timestamp_str), "./ps-%Y-%m-%d %H:%M:%S", tm_info);
+    strftime(timestamp_str, sizeof(timestamp_str), "./log/ps-%Y-%m-%d %H:%M:%S", tm_info);
     int fd = openat(AT_FDCWD, timestamp_str, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
     struct PsFile result = {

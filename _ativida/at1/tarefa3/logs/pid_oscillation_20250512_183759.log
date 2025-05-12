@@ -1,0 +1,23 @@
+=== pid_oscillation_20250512_183759 ===
+Start time: seg 12 mai 2025 18:37:59 -03
+System: Linux archlinux 6.13.8-arch1-1 #1 SMP PREEMPT_DYNAMIC Sun, 23 Mar 2025 17:17:30 +0000 x86_64 GNU/Linux
+
+[2025-05-12 18:37:59.029] Starting PID oscillation experiment with 5 iterations
+[2025-05-12 18:37:59.031] Cleaning up processes...
+[2025-05-12 18:37:59.082] Cleanup completed
+[2025-05-12 18:37:59.086] Initial system PID: 42911
+ID):
+[2025-05-12 18:37:59.087] =========== ITERATION 1 OF 5 ===========
+[2025-05-12 18:37:59.089] ====== EXPERIMENT ROUND 1 ======
+[2025-05-12 18:37:59.090] Taking initial PID measurement...
+[2025-05-12 18:37:59.101] EVENT: INFO | PID: 42928
+ID): | PPID: ID): | CMD: pid_info | Additional: Round 1 - Initial
+[2025-05-12 18:37:59.103] Initial PID: Informações do Processo:
+PID (Process ID): 42928
+PPID (Parent Process ID): 42927
+42928
+ID):
+[2025-05-12 18:37:59.105] Spawning 3 processes...
+[2025-05-12 18:37:59.116] EVENT: CREATED | PID: 42957 | PPID:   42952 | CMD: infinite_loop 1 | Additional: Spawn #1 in batch
+[2025-05-12 18:37:59.227] EVENT: CREATED | PID: 42979 | PPID:   42952 | CMD: infinite_loop 1 | Additional: Spawn #2 in batch
+[2025-05-12 18:37:59.341] EVENT: CREATED | PID: 42996 | PPID:   42952 | CMD: infinite_loop 1 | Additional: Spawn #3 in batch

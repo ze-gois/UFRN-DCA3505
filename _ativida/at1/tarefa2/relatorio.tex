@@ -1,0 +1,245 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{setspace}
+
+\geometry{a4paper, margin=1.8cm}
+\singlespacing
+
+\lstset{
+  basicstyle=\scriptsize\ttfamily,
+  columns=flexible,
+  breaklines=true,
+  commentstyle=\color{gray},
+  keywordstyle=\color{blue},
+  stringstyle=\color{red},
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=5pt,
+  aboveskip=1pt,
+  belowskip=1pt,
+}
+
+\title{Modo Usuário e Chamadas de Sistema}
+\author{Relatório da Tarefa 2}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+
+Este relatório analisa a interação entre programas e o sistema operacional através de chamadas de sistema, comparando implementações em C e Assembly que utilizam a chamada de sistema \texttt{write} para escrever na tela. As chamadas de sistema são o mecanismo fundamental que permite a transição segura entre o código de usuário (com privilégios limitados) e o código do kernel (com acesso completo ao hardware).
+
+\section{Implementação em C}
+
+O programa em C utiliza a função \texttt{write()} da biblioteca padrão:
+
+\begin{lstlisting}[language=C, frame=single, numbers=left]
+#include <unistd.h>
+int main() {
+  const char *msg = "Hello from C program using write syscall\n";
+  write(STDOUT_FILENO, msg, 38);
+  return 0;
+}
+\end{lstlisting}
+
+Diretrizes à execução:
+
+\begin{lstlisting}[frame=single, numbers=left]
+# Compilacao e execucao com strace (versao C)
+$ gcc -static -o write_c write_c.c   # Compilacao estatica
+$ ./write_c                          # Execucao normal
+$ strace ./write_c                   # Execucao com rastreamento
+\end{lstlisting}
+
+Análise com \texttt{strace} (compilação estática):
+
+\begin{lstlisting}[frame=single, numbers=left]
+execve("./write_c", ["./write_c"], 0x7ffe070c1650 /* 63 vars */) = 0
+brk(NULL)                               = 0x38333000
+brk(0x38333d40)                         = 0x38333d40
+arch_prctl(ARCH_SET_FS, 0x383333c0)     = 0
+set_tid_address(0x38333690)             = 29421
+set_robust_list(0x383336a0, 24)         = 0
+mprotect(0x4a2000, 20480, PROT_READ)    = 0
+write(1, "Hello from C program using write"..., 38) = 38
+exit_group(0)                           = ?
++++ exited with 0 +++
+\end{lstlisting}
+
+\section{Implementação em Assembly}
+
+O programa em Assembly implementa diretamente a chamada de sistema:
+
+\begin{lstlisting}[language={[x86masm]Assembler}, frame=single, numbers=left]
+.section .data
+msg: .ascii "Hello from Assembly program using syscall\n"
+     .set len, . - msg
+.section .text
+.global _start
+_start:
+    mov $1, %rax       # write syscall
+    mov $1, %rdi       # stdout
+    lea msg(%rip), %rsi # msg ptr
+    mov $len, %rdx     # length
+    syscall
+    mov $60, %rax      # exit syscall
+    xor %rdi, %rdi     # status 0
+    syscall
+\end{lstlisting}
+
+Diretrizes à execução:
+
+\begin{lstlisting}[frame=single, numbers=left]
+# Montagem, ligacao e execucao (versao Assembly)
+$ as -o write_asm.o write_asm.s      # Montagem do codigo
+$ ld -o write_asm write_asm.o        # Ligacao do objeto
+$ ./write_asm                        # Execucao normal
+$ strace ./write_asm                 # Execucao com rastreamento
+\end{lstlisting}
+
+Análise com \texttt{strace}:
+
+\begin{lstlisting}[frame=single, numbers=left]
+execve("./write_asm", ["./write_asm"], 0x7ffd182c4500 /* 63 vars */) = 0
+write(1, "Hello from Assembly program usin"..., 42) = 42
+exit(0)                                 = ?
++++ exited with 0 +++
+\end{lstlisting}
+
+\section{Análise Comparativa}
+
+\subsection{Papel da Instrução syscall em Assembly}
+
+A instrução \texttt{syscall} em arquiteturas x86-64 é responsável por:
+\begin{itemize}
+  \item Interromper a execucao normal do programa em modo usuario
+  \item Salvar automaticamente o ponteiro de instrucao (RIP) e flags (RFLAGS) na pilha do kernel
+  \item Transferir o controle para o kernel, mudando para o modo kernel (Ring 0)
+  \item Carregar o endereco da rotina de tratamento de syscall do kernel a partir do MSR \texttt{LSTAR}
+  \item Executar o codigo do kernel correspondente a chamada especificada no registrador RAX
+  \item Retornar o controle ao programa via \texttt{sysret}, voltando para o modo usuario (Ring 3)
+\end{itemize}
+
+Durante a transição do modo usuário para o kernel, ocorre uma sequência detalhada de operações:
+\vspace{-0.2cm}
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textbf{Salvamento automático}: O processador salva RIP, RFLAGS, RSP, CS e SS
+  \item \textbf{Seletores de segmento}: CS e SS recebem valores de kernel (0x08 e 0x10 respectivamente)
+  \item \textbf{Troca de pilha}: RSP é atualizado para apontar para a pilha do kernel desse processo
+  \item \textbf{Desabilitação de interrupções}: Interrupções são temporariamente desabilitadas
+  \item \textbf{Chaveamento de contexto de memória}: CR3 pode mudar para o espaço de endereçamento do kernel
+  \item \textbf{Atualização de estruturas}: A \texttt{task\_struct} é marcada como \texttt{in\_syscall=1}
+\end{itemize}
+\vspace{-0.2cm}
+
+Esta instrução é o mecanismo de baixo nível que permite a comunicação controlada entre programas de usuário e o kernel.
+
+\subsection{Diferenças entre os Programas}
+\vspace{-0.2cm}
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textbf{Numero de syscalls}: C faz mais chamadas relacionadas a inicializacao; Assembly usa apenas write e exit
+
+  Análise detalhada das chamadas:
+  \begin{itemize}\setlength\itemsep{-2pt}
+    \item \textbf{execve}: Carrega o programa, substituindo o processo atual.
+    \item \textbf{brk}: Gerencia o heap, alocando/expandindo memoria.
+    \item \textbf{arch\_prctl}: Configura registrador FS para thread-local storage.
+    \item \textbf{set\_tid\_address}: Define endereco para ID da thread.
+    \item \textbf{set\_robust\_list}: Registra lista de mutexes do processo.
+    \item \textbf{mprotect}: Marca areas de memoria como somente leitura.
+    \item \textbf{write}: Nossa chamada proposital - escreve no stdout.
+    \item \textbf{exit\_group}: Termina o processo com codigo 0.
+  \end{itemize}
+
+  \item \textbf{Abstracao}: C encapsula detalhes via \texttt{write()}; Assembly programa explicitamente registradores/syscall
+  \item \textbf{Controle}: Assembly controla diretamente a transicao; C delega a libc
+  \item \textbf{Eficiencia}: Assembly elimina overhead de camadas intermediarias
+\end{itemize}
+\vspace{-0.2cm}
+
+\subsection{Necessidade de Chamadas de Sistema}
+\vspace{-0.2cm}
+Chamadas de sistema sao necessarias devido a arquitetura de protecao entre modo usuario e kernel:
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textbf{Seguranca}: Impede acesso direto ao hardware/areas criticas
+  \item \textbf{Estabilidade}: Gerencia ordenadamente recursos compartilhados
+  \item \textbf{Virtualizacao}: Abstrai dispositivos para multiplos programas
+  \item \textbf{Controle}: Define politicas de acesso a recursos
+\end{itemize}
+\vspace{-0.2cm}
+
+Para escrever na tela, o programa precisa acessar o terminal, que e um recurso compartilhado gerenciado pelo sistema operacional. Sem o controle centralizado via chamadas de sistema, haveria conflitos de acesso e possiveis instabilidades.
+
+\subsection{Transição Segura entre Modos}
+
+A transicao segura entre modos de execucao e garantida por:
+
+\begin{enumerate}
+  \item \textbf{Instrucoes privilegiadas}: Apenas instrucoes especificas como \texttt{syscall} podem solicitar a mudanca para o modo kernel.
+
+  \item \textbf{Tabela de chamadas de sistema}: O kernel mantem uma tabela de funcoes permitidas (\texttt{sys\_call\_table} no Linux) que podem ser invocadas via chamadas de sistema.
+
+  \item \textbf{Validacao de parametros}: O kernel valida todos os parametros antes de executar operacoes.
+
+  \item \textbf{Hardware de protecao}: O MMU (Memory Management Unit) e os niveis de privilegio do processador (rings) impedem acesso nao autorizado.
+
+  \item \textbf{Troca de pilhas}: O kernel usa uma pilha separada para evitar que o modo usuario manipule a pilha do kernel.
+\end{enumerate}
+
+\noindent Estado do processo e visão interna da transição:
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textbf{Registradores}: Todos os registradores de usuário são salvos na estrutura \texttt{pt\_regs} na pilha do kernel
+  \item \textbf{Estruturas de controle}:
+    \begin{itemize}\setlength\itemsep{0pt}
+      \item \texttt{task\_struct}: Contém todo o estado do processo (PID, prioridade, CPU, etc.)
+      \item \texttt{thread\_info}: Armazena informações específicas da thread atual
+      \item Campo \texttt{flags}: Bits indicam \texttt{TIF\_SYSCALL\_TRACE} se strace estiver ativo
+    \end{itemize}
+  \item \textbf{Memoria}: Espaco de usuario permanece mapeado mas protegido (kernel pode acessar memoria do usuario atraves de funcoes como \texttt{copy\_from\_user} com verificacoes)
+  \item \textbf{Fluxo de execução}:
+    \begin{itemize}\setlength\itemsep{0pt}
+      \item Usuário → \texttt{syscall} → \texttt{entry\_SYSCALL\_64} → \texttt{do\_syscall\_64} → \texttt{sys\_write}
+      \item Retorno: \texttt{sysret} restaura contexto armazenado, devolvendo controle ao userspace
+    \end{itemize}
+\end{itemize}
+\vspace{-0.2cm}
+
+Se o modo usuário tivesse acesso direto aos dispositivos:
+
+\begin{enumerate}
+  \item Programas maliciosos poderiam modificar configuracoes criticas de hardware
+  \item Multiplos programas tentando controlar o mesmo dispositivo causariam conflitos
+  \item Nao haveria abstracao de hardware, complicando o desenvolvimento
+  \item Programas poderiam acessar dados sensiveis de outros programas
+  \item A estabilidade do sistema seria comprometida pela falta de coordenacao
+\end{enumerate}
+
+\section{Conclusão}
+
+A analise das implementacoes em C e Assembly demonstra a importancia das syscalls como interface controlada entre userspace e kernel. Esta separacao com transicoes controladas via \texttt{syscall} e fundamental para a seguranca e estabilidade dos sistemas modernos.
+
+As transicoes envolvem salvamento e restauracao precisos do estado de execucao, incluindo:
+\begin{itemize}\setlength\itemsep{0em}
+  \item Conteudo dos registradores (RIP, RFLAGS, registradores de proposito geral)
+  \item Ponteiro da pilha e seletores de segmento
+  \item Estado de privilegio (mudanca entre Ring 3 e Ring 0)
+  \item Atualizacao das estruturas de controle do kernel (\texttt{task\_struct}, \texttt{thread\_info})
+  \item Configuracao de protecoes de memoria para prevenir acesso nao autorizado
+\end{itemize}
+
+O processador x86-64 implementa otimizacoes especificas para syscalls, como as instrucoes dedicadas \texttt{syscall}/\texttt{sysret} e os registradores MSR (Model Specific Registers) que armazenam os pontos de entrada/saida do kernel. Esse hardware especializado torna as transicoes entre modo usuario e kernel muito mais eficientes do que interrupcoes genericas.
+
+Todo esse mecanismo, mesmo parecendo excessivo para operacoes simples como escrever na tela, e essencial para manter o sistema operacional protegido e estavel. Ele permite que multiplos programas compartilhem recursos de forma segura e coordenada, balanceando facilidade de programacao (abordagem C) com eficiencia e controle preciso (abordagem Assembly).
+
+\end{document}

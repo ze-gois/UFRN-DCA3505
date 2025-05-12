@@ -1,0 +1,3 @@
+    PID PRI  NI STAT %CPU CMD
+  25739  19   0 R+    100 ./spawn
+  25741  19   0 R+    0.0 /usr/bin/ps -p 25739,25741 -o pid,pri,ni,stat,%cpu,cmd --sort=-%cpu

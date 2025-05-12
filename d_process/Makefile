@@ -1,4 +1,4 @@
 all:
-	rm -rf ./ps* || true
+	rm -rf ./log/ps* || true
 	gcc -o spawn ./spawn.c
 	./spawn
