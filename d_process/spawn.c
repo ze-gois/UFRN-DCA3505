@@ -123,7 +123,7 @@ int main() {
     uint8_t nof_pp_o = 1; //nof_parallel_processes_o
     uint8_t nof_pp_s = 1; //nof_parallel_processes_s
     // uint8_t nof_pp_m = 1; //nof_parallel_processes_max
-    uint8_t nof_pp_m = 3; //nof_parallel_processes_max
+    uint8_t nof_pp_m = 10; //nof_parallel_processes_max
 
     for (uint8_t pp = nof_pp_o; pp <= nof_pp_m; pp = pp + nof_pp_s) {
         printf("Starting test with %d busy processes\n", pp);
