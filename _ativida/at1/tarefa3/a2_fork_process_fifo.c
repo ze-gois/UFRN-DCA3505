@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
+#include <errno.h>
 #define FIFO_PATH "/tmp/sync_fifo"
 
 struct Experiment {
@@ -60,14 +60,14 @@ bool signal_fifo() {
         perror("open");
         return false;
     }
-    
+
     char buf = 'X';
     if (write(fd, &buf, 1) != 1) {
         perror("write");
         close(fd);
         return false;
     }
-    
+
     close(fd);
     return true;
 }
@@ -79,14 +79,14 @@ bool wait_fifo() {
         perror("open");
         return false;
     }
-    
+
     char buf;
     if (read(fd, &buf, 1) != 1) {
         perror("read");
         close(fd);
         return false;
     }
-    
+
     close(fd);
     return true;
 }
@@ -110,7 +110,7 @@ void experiment(struct Experiment *e) {
             strcpy(fc, "C");
             print_process(fc);
             sleep_process(fc, e->sleep_child);
-            
+
             // Child notifies parent it's done with critical section
             printf("[C] Signaling through FIFO\n");
             signal_fifo();
@@ -120,7 +120,7 @@ void experiment(struct Experiment *e) {
             strcpy(fc, "P");
             print_process(fc);
             sleep_process(fc, e->sleep_parent);
-            
+
             // Parent waits for child to finish critical section
             printf("[P] Waiting for child signal through FIFO\n");
             wait_fifo();
@@ -138,7 +138,7 @@ void experiment(struct Experiment *e) {
     }
 
     printf("[%s] End of experiment\n", fc);
-    
+
     if (check_fork(child_pid) == FORK_CHILD) {
         exit(0);
     } else if (check_fork(child_pid) == FORK_PARENT) {
@@ -167,9 +167,9 @@ int main() {
         }
         printf("------\n");
     }
-    
+
     // Clean up FIFO at the end
     unlink(FIFO_PATH);
-    
+
     return 0;
 }
