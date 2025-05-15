@@ -1,0 +1,47 @@
+# Process Hierarchy and Orphan Analysis
+
+## Experiment Descriptions
+
+- **Experiment B**: Experiment B - Sem espera (Child sleep: 0ms, Grandchild sleep: 0ms)
+- **Experiment C**: Experiment B - Pai espera (Child sleep: 100ms, Grandchild sleep: 0ms)
+- **Experiment D**: Experiment D - Neto órfãos (Child sleep: 0ms, Grandchild sleep: 100ms)
+
+## Orphaned Process Analysis
+
+- **Experiment B**: 984 orphaned grandchildren out of 12000 (8.2%)
+- **Experiment C**: 220 orphaned grandchildren out of 6000 (3.7%)
+- **Experiment D**: 2564 orphaned grandchildren out of 6000 (42.7%)
+
+## Sleep Durations
+
+
+## Process Hierarchy Statistics
+
+### Experiment B
+
+- **C processes**: 3000 unique processes
+- **G processes**: 3000 unique processes
+
+### Experiment C
+
+- **G processes**: 1500 unique processes
+- **C processes**: 1500 unique processes
+
+### Experiment D
+
+- **C processes**: 1500 unique processes
+- **G processes**: 1500 unique processes
+
+### Experiment M
+
+- **M processes**: 300 unique processes
+
+## Conclusions
+
+Based on the analysis of the log files, we can observe distinct behaviors in each experiment:
+
+- **Experiment B (No Sleep)**: Without explicit sleep, we observed 8.2% orphaned grandchildren. Race conditions can occur but are less predictable.
+
+- **Experiment C (Parent Sleeps)**: When parent processes sleep, we observed 3.7% orphaned grandchildren. The sleep in parent processes introduces timing variability.
+
+- **Experiment D (Grandchild Orphans)**: When grandchildren sleep, we observed 42.7% orphaned grandchildren. This demonstrates how long-running child processes can become orphaned if their parents terminate first.

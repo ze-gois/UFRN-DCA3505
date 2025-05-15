@@ -67,7 +67,7 @@ void experiment(struct Experiment *e) {
                     print_process(e, fc);
                 break;
             }
-            printf("%s%zu\t%s\tEnd\tof experiment\n", e->acronym, e->repetition_current,fc);
+            printf("%s%zu\t%s\t0\t0\n", e->acronym, e->repetition_current,fc);
             if (child_pid == 0) {
                 exit(0);
             }
@@ -80,7 +80,7 @@ void experiment(struct Experiment *e) {
 }
 
 int main() {
-    struct Experiment overseer = {0,0,"M\0", "Main", 0, 0};
+    struct Experiment overseer = {0,0,"M\0", "Main\0", 0, 0};
 
     print_process(&overseer,"M");
 

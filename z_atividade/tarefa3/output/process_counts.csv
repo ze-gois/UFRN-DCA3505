@@ -1,0 +1,8 @@
+exp_letter,process_type,count
+B,C,12000
+B,G,12000
+C,C,6000
+C,G,6000
+D,C,6000
+D,G,6000
+M,M,12300
