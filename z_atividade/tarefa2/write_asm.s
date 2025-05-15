@@ -1,6 +1,6 @@
 .section .data
 message:
-    .ascii "Hello from Assembly program using syscall\n"
+    .ascii "Grato por tudo.\n"
     .set message_length, . - message
 
 .section .text
@@ -16,7 +16,7 @@ _start:
     lea message(%rip), %rsi  # pointer to the message
     mov $message_length, %rdx  # message length
     syscall               # call kernel
-    
+
     # syscall exit(int status)
     # rax=60 (syscall number for exit)
     # rdi=0 (exit status: 0)
