@@ -1,6 +1,0 @@
-timestamp,event_type,pid,ppid,command,duration_ms,exit_code,additional_info
-2025-05-12 18:37:59.097,INFO,42928
-ID):,ID):,pid_info,0,0,Round 1 - Initial
-2025-05-12 18:37:59.111,CREATED,42957,  42952,infinite_loop 1,0,0,Spawn #1 in batch
-2025-05-12 18:37:59.222,CREATED,42979,  42952,infinite_loop 1,0,0,Spawn #2 in batch
-2025-05-12 18:37:59.335,CREATED,42996,  42952,infinite_loop 1,0,0,Spawn #3 in batch
