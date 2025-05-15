@@ -24,15 +24,14 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
     # Pattern to match log entries
     pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\tsleep for (\d+) seconds|\twokeup|\tEnd\tof experiment|)?"
     # pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)\t()$"
+    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\t(sleep for \d+ seconds|wokeup|End\tof experiment))?"
     matches = re.findall(pattern, content)
 
 
     for m,match in enumerate(matches):
         exp_id, process_type, pid, ppid = match[0], match[1], int(match[2]), int(match[3])
-        sleep_duration = int(match[4]) if match[4] and match[4].isdigit() else 0
+        sleep_duration = -2
 
-        print(str(match))
-        continue
         # Extract experiment letter and repetition number
         exp_letter = exp_id[0]
         repetition = int(exp_id[1:]) if len(exp_id) > 1 else 0
@@ -40,14 +39,16 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
         # Determine action type
         if "sleep" in str(match):
             action = "sleep"
+            sleep_duration = int(re.findall(r"\d+",match[4])[0])
         elif "wokeup" in str(match):
             action = "wakeup"
+            sleep_duration = -1
         elif "End" in str(match):
             action = "end"
         else:
             action = "other"
 
-        data.append({
+        entry = {
             "exp_id": exp_id,
             "exp_letter": exp_letter,
             "repetition": repetition,
@@ -57,7 +58,9 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
             "sleep_duration": sleep_duration,
             "action": action,
             "log_file": os.path.basename(filepath)
-        })
+        }
+
+        data.append(entry)
 
     return data
 
