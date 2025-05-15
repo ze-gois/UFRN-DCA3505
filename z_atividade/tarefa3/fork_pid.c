@@ -85,9 +85,9 @@ int main() {
     print_process(&overseer,"M");
 
     struct Experiment experiments[] = {
-        {10, 0, "B\0", "Experiment B - Sem espera\0", 0, 0}, // sem sono, race
-        {5,  0, "C\0", "Experiment B - Pai espera\0", 100, 0}, // filho dorme
-        {5,  0, "D\0", "Experiment D - Neto órfãos\0",0, 100}  // neto dorme
+        {10, 0, "A\0", "Experiment A - Sem espera\0", 0, 0}, // sem sono, race
+        {5,  0, "B\0", "Experiment B - Pai espera\0", 100, 0}, // filho dorme
+        {5,  0, "C\0", "Experiment C - Neto órfãos\0",0, 100}  // neto dorme
     };
 
     size_t nof_experiments = sizeof(experiments)/sizeof(struct Experiment);

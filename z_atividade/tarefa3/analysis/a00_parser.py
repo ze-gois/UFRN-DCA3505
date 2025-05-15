@@ -141,6 +141,20 @@ def extract_experiment_descriptions(filepath: str="fork_pid.c") -> List[Dict[str
 
     return descriptions
 
+def get_df():
+    import polars as pl
+    df_path = os.path.join(os.getcwd(),'log',"0.df")
+    if Path(df_path).exists():
+        return pl.read_ipc("./log/0.df")
+    else:
+        log_files = get_log_files(limit=None)  # Limit to 3 for testing
+        data = parse_all_logs(log_files, verbose=True)
+
+        df = pl.DataFrame(data)
+        # Salvar no formato Arrow IPC (Feather)
+        df.write_ipc("./log/0.df")  # extensão pode ser qualquer uma
+        return df
+
 if __name__ == "__main__":
     # Test the parser
     import sys
