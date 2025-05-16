@@ -1,0 +1,16 @@
+Análise Final (Relatório PDF, escrito em TeX)
+Responda:
+• Como o escalonador do Linux distribuiu a CPU?
+• O que aconteceu na sobrecarga?
+• Qual o efeito da prioridade?
+• O processo bloqueado recebeu mais CPU?
+• Explique com base no CFS
+• Compare com: FIFO, Round Robin, SJF
+
+Ferramentas Sugeridas
+• top, htop, ps para monitoramento
+• nproc para núcleos disponíveis
+• renice, nice para ajustar prioridades
+• kill, killall para encerrar processos
+• Comandos úteis:
+ps -eo pid,pri,ni,stat,%cpu,cmd --sort=-%cpu

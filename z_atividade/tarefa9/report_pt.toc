@@ -1,0 +1,16 @@
+\contentsline {section}{\numberline {1}Introdução}{2}{section.1}%
+\contentsline {section}{\numberline {2}Configuração Experimental}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Configuração do Sistema}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Projeto do Experimento}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Implementação}{3}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Resultados e Análise}{3}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Parte 1: Distribuição com N Processos}{3}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Parte 2: Sobrecarga com N+1 Processos}{4}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Parte 3: Efeito da Prioridade}{4}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Parte 4: Processo Bloqueado por Entrada}{4}{subsection.3.4}%
+\contentsline {section}{\numberline {4}Análise Comparativa}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}CFS vs. Outros Algoritmos de Escalonamento}{5}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Análise da Distribuição de CPU}{5}{subsection.4.2}%
+\contentsline {section}{\numberline {5}Conclusão}{6}{section.5}%
+\contentsline {section}{\numberline {A}Implementação do Código}{6}{appendix.A}%
+\contentsline {section}{\numberline {B}Metodologia de Análise}{7}{appendix.B}%

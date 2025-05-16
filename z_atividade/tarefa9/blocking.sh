@@ -1,1 +1,7 @@
-while true; do read var; done
+#!/bin/bash
+
+# Display message when starting
+
+while true; do
+    read var
+done
