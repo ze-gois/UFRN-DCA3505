@@ -1,4 +1,5 @@
 all:
-	rm -rf ./log/ps* || true
+	rm -rf ./log
+	mkdir ./log
 	gcc -o spawn ./spawn.c
 	./spawn

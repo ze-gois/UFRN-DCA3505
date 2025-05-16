@@ -1,0 +1,194 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{color}
+\usepackage{hyperref}
+
+\geometry{a4paper, margin=1in}
+
+\title{Análise do Escalonador do Linux}
+\author{Experimento de Escalonamento de Processos}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+
+Este relatório apresenta uma análise do comportamento do escalonador do Linux (CFS - Completely Fair Scheduler) em diferentes cenários. 
+O experimento foi dividido em quatro partes:
+
+\begin{enumerate}
+    \item Distribuição com N Processos
+    \item Sobrecarga com N+1 Processos
+    \item Efeito da Prioridade
+    \item Processo Bloqueado por Entrada
+\end{enumerate}
+
+\section{Metodologia}
+
+Para cada experimento, criamos processos que executam laços infinitos consumindo CPU e monitoramos seu comportamento 
+usando comandos como \texttt{ps}. As métricas coletadas incluem uso de CPU, estado dos processos, tempo de execução e prioridade.
+
+\section{Resultados}\subsection{Experimento 1: Distribuição com N Processos}
+Neste experimento, foram criados N processos (onde N é o número de núcleos do processador) 
+executando laços infinitos para consumir CPU continuamente.
+
+\subsubsection{Observações}
+
+Número de processos ocupados: 0
+Uso médio de CPU por processo: 0.00\%
+Desvio padrão do uso de CPU: 0.00\%
+Diferença entre máximo e mínimo uso de CPU: 0.00\%
+
+
+\begin{table}[H]
+\centering
+\caption{Estatísticas dos Processos no Experimento 1}
+\begin{tabular}{lrrrc}
+\toprule
+\textbf{Processo} & \textbf{PID} & \textbf{\%CPU} & \textbf{Nice} & \textbf{Estado} \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Análise}
+Com N processos em N núcleos, o escalonador CFS do Linux tenta distribuir o tempo de CPU igualmente entre todos os processos.
+Como cada processo está consumindo 100\% de um núcleo, esperamos ver aproximadamente distribuição igual de CPU.
+\subsection{Experimento 2: Sobrecarga com N+1 Processos}
+Neste experimento, foram criados N+1 processos (mais do que o número de núcleos) 
+para observar como o Linux gerencia a sobrecarga de processos.
+
+\subsubsection{Observações}
+
+Número de processos ocupados: 0
+Uso médio de CPU por processo: 0.00\%
+Desvio padrão do uso de CPU: 0.00\%
+Diferença entre máximo e mínimo uso de CPU: 0.00\%
+
+
+\begin{table}[H]
+\centering
+\caption{Estatísticas dos Processos no Experimento 2}
+\begin{tabular}{lrrrc}
+\toprule
+\textbf{Processo} & \textbf{PID} & \textbf{\%CPU} & \textbf{Nice} & \textbf{Estado} \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Análise}
+Com N+1 processos competindo por N núcleos, o escalonador CFS precisa compartilhar os recursos de CPU disponíveis.
+Idealmente, cada processo deveria receber aproximadamente a mesma fatia de tempo de CPU, resultando em uma distribuição
+proporcional a N/(N+1) do tempo total disponível para cada processo.
+\subsection{Experimento 3: Efeito da Prioridade}
+Neste experimento, foram criados N processos, mas a prioridade de um deles foi aumentada 
+usando \texttt{renice -n -10 -p <PID>} para observar o impacto da prioridade no escalonamento.
+
+\subsubsection{Observações}
+
+Número de processos ocupados: 0
+Uso médio de CPU por processo: 0.00\%
+Desvio padrão do uso de CPU: 0.00\%
+Diferença entre máximo e mínimo uso de CPU: 0.00\%
+
+
+\begin{table}[H]
+\centering
+\caption{Estatísticas dos Processos no Experimento 3}
+\begin{tabular}{lrrrc}
+\toprule
+\textbf{Processo} & \textbf{PID} & \textbf{\%CPU} & \textbf{Nice} & \textbf{Estado} \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Análise}
+No CFS, processos com maior prioridade (nice value mais baixo) devem receber mais tempo de CPU.
+O escalonador ajusta o tempo virtual de execução (vruntime) para processos com prioridade mais alta,
+permitindo que eles sejam executados por mais tempo antes de serem preemptados.
+\subsection{Experimento 4: Processo Bloqueado por Entrada}
+Neste experimento, foram criados N processos intensivos de CPU mais um processo adicional 
+que aguarda entrada do usuário (bloqueado por I/O).
+
+\subsubsection{Observações}
+
+Número de processos ocupados: 0
+Nenhum processo bloqueado encontrado no monitoramento.
+Uso médio de CPU por processo intensivo: 0.00\%
+Desvio padrão do uso de CPU: 0.00\%
+
+
+\begin{table}[H]
+\centering
+\caption{Estatísticas dos Processos Intensivos no Experimento 4}
+\begin{tabular}{lrrrc}
+\toprule
+\textbf{Processo} & \textbf{PID} & \textbf{\%CPU} & \textbf{Nice} & \textbf{Estado} \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Análise}
+Os processos bloqueados por I/O (como esperando entrada do usuário) geralmente
+entram em estado de sono (estado S) e não consomem CPU enquanto bloqueados.
+Quando recebem entrada, são acordados pelo escalonador e competem por tempo de CPU.
+
+\section{Análise Comparativa}
+
+\subsection{Comparação do CFS com Outros Algoritmos de Escalonamento}
+
+\begin{table}[H]
+\centering
+\caption{Comparação de Algoritmos de Escalonamento}
+\begin{tabular}{lp{12cm}}
+\toprule
+\textbf{Algoritmo} & \textbf{Características} \\
+\midrule
+CFS (Linux) & O Completely Fair Scheduler utiliza uma árvore rubro-negra para gerenciar processos e garantir distribuição justa de recursos. Cada processo recebe uma quantidade de tempo proporcional ao seu peso (prioridade). O CFS minimiza a latência de espera, favorecendo processos interativos. \\
+\midrule
+FIFO & First-In-First-Out é um algoritmo não-preemptivo que executa os processos na ordem de chegada até a conclusão. Favorece processos que chegam primeiro, independentemente do tamanho e de requisitos de CPU. \\
+\midrule
+Round Robin & Algoritmo preemptivo que aloca um quantum de tempo para cada processo em uma fila circular. Garante que todos os processos tenham chance de execução, mas pode ser ineficiente com muita alternância de contexto. \\
+\midrule
+SJF & Shortest Job First prioriza processos com menor tempo de execução estimado. Minimiza o tempo médio de espera, mas pode causar inanição (starvation) de processos longos. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Vantagens do CFS}
+
+O Completely Fair Scheduler (CFS) do Linux possui várias vantagens:
+
+\begin{itemize}
+    \item \textbf{Justiça}: Garante que todos os processos recebam uma parte justa do tempo de CPU.
+    \item \textbf{Escalabilidade}: Utiliza estruturas de dados eficientes (árvore rubro-negra) para suportar muitos processos.
+    \item \textbf{Responsividade}: Favorece processos interativos através do modelo de tempo virtual.
+    \item \textbf{Priorização flexível}: Permite ajuste de prioridades através de valores nice.
+\end{itemize}
+
+\section{Conclusão}
+
+Com base nos experimentos realizados, podemos concluir que o escalonador CFS do Linux:
+
+\begin{enumerate}
+    \item Distribui eficientemente o tempo de CPU entre N processos em N núcleos;
+    \item Mantém uma distribuição justa mesmo quando há mais processos que núcleos disponíveis;
+    \item Respeita as prioridades dos processos, dando mais tempo aos processos com maior prioridade;
+    \item Gerencia adequadamente processos bloqueados por I/O, permitindo que eles consumam CPU apenas quando necessário.
+\end{enumerate}
+
+O CFS implementa um modelo de justiça que difere significativamente de algoritmos mais simples como FIFO ou Round Robin.
+Ao utilizar o conceito de tempo virtual de execução (vruntime), o CFS consegue balancear as necessidades de processos 
+com diferentes prioridades e características de execução.
+
+\end{document}

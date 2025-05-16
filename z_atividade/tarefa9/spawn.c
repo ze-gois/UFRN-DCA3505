@@ -1,8 +1,9 @@
 #include <signal.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <unistd.h>
+#include <sys/stat.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <fcntl.h>
 #include <time.h>
@@ -10,192 +11,299 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <sys/prctl.h>
+#include <stdbool.h>
+#include <sys/mman.h>
+#include <sys/shm.h>
 
 extern char **environ;
 
-struct PsFile {
-    int fd;
-    char str[35];
-} PsFile;
+struct Experiment {
+    size_t r; // repetitions
+    char d; // description
+    char desc[64];
+    uint8_t np; // number of processes
+    void (*task)(struct Experiment *);
+    uint8_t no; // number of observations
+    uint64_t io; // interval of observations
+    pid_t pid; // experiment pid
+    struct Experiment **sub;
+    pid_t pidseer;
+    int shm_id;  // Shared memory id
+    void *shm_ptr; // Shared memory pointer
+} Experiment;
 
-struct PsFile new_file(){
+int nproc() {
+    FILE *fp;
+    char result[16];
+    int cores = 1;
+    fp = popen("nproc", "r");
+    if (fgets(result, sizeof(result), fp) != NULL)
+        cores = atoi(result);
+    pclose(fp);
+    return cores;
+}
+
+void costume(char d[]){
+    char nome[32];
+    snprintf(nome, 32, "t9_%s",d);
+    prctl(PR_SET_NAME, (unsigned long) nome, 0, 0, 0);
+}
+
+struct Seelog {
+    int file_descriptor;
+    char filename[64];
+    struct Experiment *seed;
+} Seelog;
+
+#define LOG_DIR "./log"
+
+struct Seelog init_seelog(int p, struct Experiment *seed){
+    struct Seelog seelog = { -1, "", seed };
+
+    mkdir(LOG_DIR, 0755);
+
     time_t timestamp;
     time(&timestamp);
-    char timestamp_str[39];
     struct tm *tm_info = localtime(&timestamp);
-    strftime(timestamp_str, sizeof(timestamp_str), "./log/ps-%Y-%m-%d %H:%M:%S", tm_info);
-    int fd = openat(AT_FDCWD, timestamp_str, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
-    struct PsFile result = {
-            .fd = fd,
+    char base_filename[64];
+    snprintf(base_filename, sizeof(base_filename),
+             "%s/%c-%d",
+             LOG_DIR, seed->d, p);
+
+    char timestamp_str[64];
+    strftime(timestamp_str, sizeof(timestamp_str),
+             "-%Y-%m-%d-%H-%M-%S.log", tm_info);
+
+    snprintf(seelog.filename, sizeof(seelog.filename),
+             "%s%s", base_filename, timestamp_str);
+
+    seelog.file_descriptor = open(seelog.filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+    if (seelog.file_descriptor == -1) {
+        perror("Failed to create log file");
+    }
+
+    return seelog;
+}
+
+void shell(int file_descriptor, char command[], char c[]){
+    pid_t f = fork();
+
+    if (f==0){
+        costume(c);
+        char *argv[] = {
+            "/usr/bin/sh",
+            "-c",
+            command,
+            NULL
         };
-    strcpy(result.str, timestamp_str);
 
-    return result;
+        if (file_descriptor != STDOUT_FILENO)
+            if (dup2(file_descriptor, STDOUT_FILENO) == -1) {
+                perror("dup2");
+                return;
+            }
+
+        execve("/usr/bin/sh", argv, environ);
+        exit(0);
+        perror("execve");
+    }
 }
 
-void ps(int fd, pid_t *pids, int pid_count){
-    // Build a string containing all the PIDs we want to filter for
-    char pid_list[1024] = "";
-
-    for (int i = 0; i < pid_count; i++) {
-        char pid_str[32];
-        snprintf(pid_str, sizeof(pid_str), "%d,", pids[i]);
-        strcat(pid_list, pid_str);
-    }
-
-    // Add parent process PID
-    char pid_str[32];
-    snprintf(pid_str, sizeof(pid_str), "%d", getpid());
-    strcat(pid_list, pid_str);
-
-    // Prepare ps command with PID filter
-    char *argv[] = {
-        "/usr/bin/ps",
-        "-p", pid_list,
-        "-o", "pid,pri,ni,stat,%cpu,cmd",
-        "--sort=-%cpu",
-        NULL
-    };
-
-    // Duplicate fd to stdout before execve
-    if (fd != STDOUT_FILENO) {
-        if (dup2(fd, STDOUT_FILENO) == -1) {
-            perror("dup2");
-            return;
-        }
-    }
-
-    execve("/usr/bin/ps", argv, environ);
-    // If we get here, execve failed
-    perror("execve");
+void ps(struct Seelog pseer){
+    // shell(pseer.file_descriptor, "ps -o pid,pri,ni,stat,%cpu,cmd --sort=-%cpu | grep -E ' ./spawn($|_[0-9]+_[0-9]+)$'","pseer");
+    shell(pseer.file_descriptor, "ps -o pid,pri,ni,stat,%cpu,cmd --sort=-%cpu | grep -E 't9_.*'","pseer");
 }
 
-struct PsThread {
-    uint16_t n;
-    pid_t pids[256];  // Array to store PIDs of busy processes
-    int pid_count;    // Number of PIDs
-} PsThread;
+bool sensus(struct Seelog seelog){
+    pid_t sensid = fork();
+    if (sensid == 0){
+        costume("sensus");
+        ps(seelog);
+        exit(0);
+    } else if (sensid > 0) {
+        return true;
+    }
+    return false;
+}
 
-void *ps_thread(void* arg){
-    struct PsThread *pt = (struct PsThread *) arg;
+void pseer(struct Experiment *seed){
+    if (seed->no <= 0) return;
 
-    for (uint64_t f = 1; f <= pt->n; f++){
-        printf("Running ps iteration %lu\n", f);
-        struct PsFile fth_ps_file = new_file();
+    pid_t pidseer = fork();
 
-        if (fth_ps_file.fd == -1) {
-            perror("Failed to create file");
-            continue;
+    if (pidseer == 0){
+        costume("overseing");
+        for (int p = 0; p < seed->no; p++ ){
+            struct Seelog seelog = init_seelog(p,seed);
+            sensus(seelog);
+            usleep(seed->io);
         }
+        exit(0);
+    } else {
+        seed->pidseer = pidseer;
+    }
+    return;
+}
 
-        pid_t fth_ps_pid = fork();
+void monotono (struct Experiment *e){
+    while (1);
+    exit(0);
+}
 
-        if (fth_ps_pid == -1) {
-            // Fork failed
-            perror("fork");
-            close(fth_ps_file.fd);
-            remove(fth_ps_file.str);
-            continue;
-        }
-        else if (fth_ps_pid == 0) {
-            // Child process
-            prctl(PR_SET_NAME, "ps-monitor", 0, 0, 0); // Set process name
-            ps(fth_ps_file.fd, pt->pids, pt->pid_count);
-            // Should not reach here unless execve fails
-            exit(1);
-        }
-        else {
-            // Parent process
-            int status;
-            waitpid(fth_ps_pid, &status, 0);
-            close(fth_ps_file.fd);
+void parte_1(struct Experiment *e){
+    e->sub = malloc(e->np*sizeof(struct Experiment *));
 
-            // Sleep between iterations
-            sleep(1);
+    for (int p = 0; p<e->np; p++){
+        struct Experiment exp = { 1, '1', "Monotono", 1, monotono, 0, 0, 0, NULL, -1};
+        *(e->sub+p) = &exp;
+    }
+
+    for (int p = 0; p < e->np; p++){
+        pid_t subid = fork();
+
+        if (subid == 0){
+            char nome[32];
+            snprintf(nome, 32, "%c_%d",e->d, p);
+            costume(nome);
+            (*(e->sub+p))->task(NULL);
+            exit(0);
+        } else {
+            (*(e->sub+p))->pid = subid;
         }
     }
 
-    return NULL;
+    wait(&e->pidseer);
+    printf("-------!!!!?\n");
+    fflush(stdout);
+
+    for (int p = 0; p < e->np; p++){
+        kill((*(e->sub+p))->pid, SIGKILL);
+        free(e->sub+p);
+    }
+}
+
+void parte_2(struct Experiment *e){
+    int np = 1 + e->np;
+    e->sub = malloc(np*sizeof(struct Experiment));
+
+    for (int p = 0; p < np; p++){
+        struct Experiment exp = { 1, '1', "Monotono", 1, monotono, 0, 0, 0, NULL, -1};
+        *(e->sub+p) = &exp;
+    }
+
+    for (int p = 0; p < np; p++){
+        pid_t subid = fork();
+        (*(e->sub+p))->pid = subid;
+        if (subid == 0){
+            (*(e->sub+p))->task(NULL);
+            exit(0);
+        } else {
+            (*(e->sub+p))->pid = subid;
+        }
+    }
+
+    wait(&e->pidseer);
+
+    for (int p = 0; p < np; p++){
+        kill((*(e->sub+p))->pid, SIGKILL);
+        free(e->sub+p);
+    }
+}
+
+void parte_3(struct Experiment *e){
+    int np = 1 + e->np;
+    e->sub = malloc(np*sizeof(struct Experiment));
+
+    for (int p = 0; p < np; p++){
+        struct Experiment exp = { 1, '1', "Monotono", 1, monotono, 0, 0, 0, NULL, -1};
+        *(e->sub+p) = &exp;
+    }
+
+    for (int p = 0; p < np; p++){
+        pid_t subid = fork();
+        if (subid == 0){
+            char nome[32];
+            snprintf(nome, 32, "%c_%d",e->d, p);
+            costume(nome);
+            (*(e->sub+p))->task(NULL);
+            exit(0);
+        } else {
+            (*(e->sub+p))->pid = subid;
+        }
+    }
+
+    pid_t extra = fork();
+    if (extra == 0){
+        char cmd[32];
+        snprintf(cmd, 32, "renice -n -10 -p %d",(*(e->sub+5))->pid);
+        shell(-1,cmd,"renice");
+    }
+
+    wait(&e->pidseer);
+
+    for (int p = 0; p < np; p++){
+        kill((*(e->sub+p))->pid, SIGKILL);
+        free(e->sub+p);
+    }
+}
+
+void parte_4(struct Experiment *e){
+    e->sub = malloc(e->np*sizeof(struct Experiment));
+
+    for (int p = 0; p<e->np; p++){
+        struct Experiment exp = { 1, '1', "Monotono", 1, monotono, 0, 0, 0, NULL, -1};
+        *(e->sub+p) = &exp;
+    }
+
+    for (int p = 0; p < e->np; p++){
+        pid_t subid = fork();
+        if (subid == 0){
+            char nome[32];
+            snprintf(nome, 32, "%c_%d",e->d, p);
+            costume(nome);
+            (*(e->sub+p))->task(NULL);
+            exit(0);
+        } else {
+            (*(e->sub+p))->pid = subid;
+        }
+    }
+
+    pid_t extra = fork();
+    if (extra == 0){
+        shell(-1, "./human_entry.sh","entrada");
+    }
+
+    wait(&e->pidseer);
+
+    for (int p = 0; p < e->np; p++){
+        kill((*(e->sub+p))->pid, SIGKILL);
+        free(e->sub+p);
+    }
 }
 
 int main() {
-    uint8_t nof_pp_o = 1; //nof_parallel_processes_o
-    uint8_t nof_pp_s = 1; //nof_parallel_processes_s
-    // uint8_t nof_pp_m = 1; //nof_parallel_processes_max
-    uint8_t nof_pp_m = 10; //nof_parallel_processes_max
+    int np = nproc();
 
-    for (uint8_t pp = nof_pp_o; pp <= nof_pp_m; pp = pp + nof_pp_s) {
-        printf("Starting test with %d busy processes\n", pp);
+    struct Experiment overseer = { 1, 'O', "Overseer", 1, NULL, 0, 0, getpid(), NULL, -1};
 
-        pid_t parent_pid = getpid();
-        pid_t child_pids[pp+1]; // +1 because we're using 1-based indexing in the loop
+    struct Experiment parte1 = { 1, '1', "Parte 1", np, parte_1, 10, 5, 1000, NULL, -1};
+    struct Experiment parte2 = { 2, '2', "Parte 2", np, parte_2, 10, 5, 1000, NULL, -1};
+    struct Experiment parte3 = { 3, '3', "Parte 3", np, parte_3, 10, 5, 1000, NULL, -1};
+    struct Experiment parte4 = { 4, '4', "Parte 4", np, parte_4, 10, 5, 1000, NULL, -1};
 
-        // Create pp busy child processes
-        for (uint8_t p = 1; p <= pp; p++) {
-            pid_t child_pid = fork();
+    struct Experiment *partes[] = { &parte1, &parte2, &parte3, &parte4 };
 
-            if (child_pid == -1) {
-                // Fork failed
-                perror("fork");
-                exit(1);
-            }
-            else if (child_pid == 0) {
-                // Child process - just be busy
-                char proc_name[32];
-                snprintf(proc_name, sizeof(proc_name), "busy-proc-%d", p);
-                prctl(PR_SET_NAME, proc_name, 0, 0, 0); // Set process name
+    overseer.sub = partes;
 
-                printf("Busy child process %d started with name '%s'\n", p, proc_name);
-                while(1) {
-                    // CPU-intensive busy loop
-                }
-                // This will never be reached
-                exit(0);
-            }
-            else {
-                // Parent process - record the child PID
-                child_pids[p] = child_pid;
-            }
-        }
-        // Only the parent continues here
-        if (getpid() == parent_pid) {
-            // Create the thread to monitor system state
-            struct PsThread pt_arg = {
-                .n = 5,
-                .pid_count = pp,
-            };
+    int npartes = 4;
 
-            // Store all child PIDs in the structure for filtering in ps
-            for (uint8_t p = 1; p <= pp; p++) {
-                pt_arg.pids[p-1] = child_pids[p];
-            }
-
-            pthread_t thread;
-            printf("Starting monitoring thread for %d busy processes\n", pp);
-            if (pthread_create(&thread, NULL, ps_thread, (void *)&pt_arg) != 0) {
-                perror("pthread_create");
-                // Kill all child processes before exiting
-                for (uint8_t p = 1; p <= pp; p++) {
-                    kill(child_pids[p], SIGKILL);
-                }
-                return 1;
-            }
-
-            // Wait for the monitoring thread to complete
-            pthread_join(thread, NULL);
-
-            printf("Monitoring completed for %d busy processes\n", pp);
-
-            // Kill all child processes before proceeding to next test
-            for (uint8_t p = 1; p <= pp; p++) {
-                printf("Killing busy child process %d (PID: %d)\n", p, child_pids[p]);
-                kill(child_pids[p], SIGKILL);
-                waitpid(child_pids[p], NULL, 0);
-            }
-            printf("Test with %d busy processes completed\n\n", pp);
-        } else {
-            exit(0);
+    for (int r = 0; r < overseer.r; r++){
+        for (int o = 0; o < npartes; o++){
+            struct Experiment *currex = *(overseer.sub+o);
+            pseer(currex);
+            currex->task(currex);
         }
     }
 
