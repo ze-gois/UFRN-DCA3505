@@ -30,12 +30,15 @@ enum FORK_RESULT check_fork(pid_t pid){
 
 void print_process(struct Experiment *e, char const fc[], char id) {
     printf("%s%zu\t%s\t%d\t%d\t%c\n", e->acronym, e->repetition_current, fc,getpid(),getppid(), id);
+    setbuf(stdout, NULL);
 }
 
 void sleep_process(struct Experiment *e, char const fc[], unsigned int duration){
     printf("%s%zu\t%s\t%d\t%d\tsleep %d\n", e->acronym, e->repetition_current, fc, getpid(), getppid(), duration);
+    setbuf(stdout, NULL);
     usleep(duration);
     printf("%s%zu\t%s\t%d\t%d\twokeup\n", e->acronym, e->repetition_current, fc, getpid(), getppid());
+    setbuf(stdout, NULL);
 }
 
 void experiment(struct Experiment *e) {
@@ -67,10 +70,10 @@ void experiment(struct Experiment *e) {
                     print_process(e, fc,'B');
                 break;
             }
-            printf("%s%zu\t%s\t0\t0\n", e->acronym, e->repetition_current,fc);
-            if (child_pid == 0) {
-                exit(0);
-            }
+            printf("%s%zu\t%s\t0\t0\tE\n", e->acronym, e->repetition_current,fc);
+            setbuf(stdout, NULL);
+
+            exit(0);
         break;
 
         case FORK_PARENT:
@@ -80,9 +83,7 @@ void experiment(struct Experiment *e) {
 }
 
 int main() {
-    struct Experiment overseer = {0,0,"M\0", "Main\0", 0, 0};
-
-    print_process(&overseer,"M",' ');
+    struct Experiment overseer = {3,0,"M\0", "Main\0", 0, 0};
 
     struct Experiment experiments[] = {
         {10, 0, "A\0", "Experiment A - Sem espera\0", 0, 0}, // sem sono, race
@@ -92,16 +93,17 @@ int main() {
 
     size_t nof_experiments = sizeof(experiments)/sizeof(struct Experiment);
 
-    for (size_t e = 0; e < nof_experiments; e++){
-        // printf("------------\n");
-        // printf("%s\n",experiments[e].description);
-        for (size_t r = 0; r < experiments[e].repetitions; r++ ){
-            experiments[e].repetition_current = r;
-            // printf("------------------------------------r=%zu\n",r);
-            experiment(&experiments[e]);
-            wait(&experiments[e].child);
-            wait(&experiments[e].grand_child);
+    printf("%s%zu\t%s\t%d\t%d\t%c\n", overseer.acronym, overseer.repetition_current, "I",getpid(),getppid(), 'I');
+    setbuf(stdout, NULL);
+
+    for (size_t m = 0; m < overseer.repetitions; m++){
+        for (size_t e = 0; e < nof_experiments; e++){
+            for (size_t r = 0; r < experiments[e].repetitions; r++ ){
+                experiments[e].repetition_current = r;
+                experiment(&experiments[e]);
+                wait(&experiments[e].child);
+                wait(&experiments[e].grand_child);
+            }
         }
     }
-    // printf("----------------------------------- END ---------------------------------\n");
 }

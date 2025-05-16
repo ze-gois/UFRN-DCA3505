@@ -22,11 +22,8 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
         return data
 
     # Pattern to match log entries
-    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\tsleep for (\d+) seconds|\twokeup|\tEnd\tof experiment|)?"
-    # pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)\t()$"
-    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\t([A-Z]|sleep for \d+ seconds|wokeup|End\tof experiment))?"
+    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\t([A-Z]|sleep \d+|wokeup|End\tof experiment))?"
     matches = re.findall(pattern, content)
-
 
     for m,match in enumerate(matches):
         exp_id, process_type, pid, ppid = match[0], match[1], int(match[2]), int(match[3])
@@ -36,17 +33,16 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
         exp_letter = exp_id[0]
         repetition = int(exp_id[1:]) if len(exp_id) > 1 else 0
 
+        action = ""
         # Determine action type
         if "sleep" in str(match):
-            action = "sleep"
+            action = "S"
             sleep_duration = int(re.findall(r"\d+",match[4])[0])
         elif "wokeup" in str(match):
-            action = "wakeup"
+            action = "W"
             sleep_duration = -1
-        elif "End" in str(match):
-            action = "end"
         else:
-            action = "other"
+            action = str(match[4])
 
         entry = {
             "exp_id": exp_id,
@@ -141,8 +137,7 @@ def extract_experiment_descriptions(filepath: str="fork_pid.c") -> List[Dict[str
 
     return descriptions
 
-def get_df():
-    cwd = '/home/zegois/back/acad/ufrn/DCA3505/code/z_atividade/tarefa3'
+def get_df(cwd):
     import polars as pl
     df_path = os.path.join(cwd,'log',"0.df")
     print(df_path)
