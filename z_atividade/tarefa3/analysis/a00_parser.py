@@ -24,7 +24,7 @@ def parse_log_file(filepath: str) -> List[Dict[str, Any]]:
     # Pattern to match log entries
     pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\tsleep for (\d+) seconds|\twokeup|\tEnd\tof experiment|)?"
     # pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)\t()$"
-    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\t(sleep for \d+ seconds|wokeup|End\tof experiment))?"
+    pattern = r"([A-Z]\d+)\t([A-Z])\t(\d+)\t(\d+)(?:\t([A-Z]|sleep for \d+ seconds|wokeup|End\tof experiment))?"
     matches = re.findall(pattern, content)
 
 
@@ -142,17 +142,19 @@ def extract_experiment_descriptions(filepath: str="fork_pid.c") -> List[Dict[str
     return descriptions
 
 def get_df():
+    cwd = '/home/zegois/back/acad/ufrn/DCA3505/code/z_atividade/tarefa3'
     import polars as pl
-    df_path = os.path.join(os.getcwd(),'log',"0.df")
+    df_path = os.path.join(cwd,'log',"0.df")
+    print(df_path)
     if Path(df_path).exists():
-        return pl.read_ipc("./log/0.df")
+        return pl.read_ipc(df_path)
     else:
         log_files = get_log_files(limit=None)  # Limit to 3 for testing
         data = parse_all_logs(log_files, verbose=True)
 
         df = pl.DataFrame(data)
         # Salvar no formato Arrow IPC (Feather)
-        df.write_ipc("./log/0.df")  # extensão pode ser qualquer uma
+        df.write_ipc(df_path)  # extensão pode ser qualquer uma
         return df
 
 if __name__ == "__main__":

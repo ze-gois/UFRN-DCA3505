@@ -28,12 +28,12 @@ enum FORK_RESULT check_fork(pid_t pid){
     return FORK_CHILD;
 }
 
-void print_process(struct Experiment *e, char const fc[]) {
-    printf("%s%zu\t%s\t%d\t%d\t\n", e->acronym, e->repetition_current, fc,getpid(),getppid());
+void print_process(struct Experiment *e, char const fc[], char id) {
+    printf("%s%zu\t%s\t%d\t%d\t%c\n", e->acronym, e->repetition_current, fc,getpid(),getppid(), id);
 }
 
 void sleep_process(struct Experiment *e, char const fc[], unsigned int duration){
-    printf("%s%zu\t%s\t%d\t%d\tsleep for %d seconds\n", e->acronym, e->repetition_current, fc, getpid(), getppid(), duration);
+    printf("%s%zu\t%s\t%d\t%d\tsleep %d\n", e->acronym, e->repetition_current, fc, getpid(), getppid(), duration);
     usleep(duration);
     printf("%s%zu\t%s\t%d\t%d\twokeup\n", e->acronym, e->repetition_current, fc, getpid(), getppid());
 }
@@ -55,16 +55,16 @@ void experiment(struct Experiment *e) {
                 break;
                 case FORK_CHILD:
                     strcpy(fc, "G");
-                    print_process(e, fc);
+                    print_process(e, fc,'A');
                     sleep_process(e, fc, e->sleep_grandchild);
-                    print_process(e, fc);
+                    print_process(e, fc,'B');
 
                 break;
                 case FORK_PARENT:
                     strcpy(fc, "C");
-                    print_process(e, fc);
+                    print_process(e, fc,'A');
                     sleep_process(e, fc, e->sleep_child);
-                    print_process(e, fc);
+                    print_process(e, fc,'B');
                 break;
             }
             printf("%s%zu\t%s\t0\t0\n", e->acronym, e->repetition_current,fc);
@@ -82,7 +82,7 @@ void experiment(struct Experiment *e) {
 int main() {
     struct Experiment overseer = {0,0,"M\0", "Main\0", 0, 0};
 
-    print_process(&overseer,"M");
+    print_process(&overseer,"M",' ');
 
     struct Experiment experiments[] = {
         {10, 0, "A\0", "Experiment A - Sem espera\0", 0, 0}, // sem sono, race
