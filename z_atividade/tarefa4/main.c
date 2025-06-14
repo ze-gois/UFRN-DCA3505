@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -22,11 +23,11 @@ enum PID check_pid(pid_t pid) {
 }
 
 void shell(char cmd[], int *fds) {
-    int duto = pipe(fds);
+    // int duto = pipe(fds);
 
     pid_t pid = fork();
 
-    char *argv[] = {
+        char *argv[] = {
         "/usr/bin/sh",
         "-c",
         cmd,
@@ -35,6 +36,10 @@ void shell(char cmd[], int *fds) {
 
     switch (check_pid(pid)) {
         case CHILD:
+        printf("\n");
+            for (uint8_t c =0 ; c < 10; c++){
+                printf("%d, ",c);
+            }
             execve("/usr/bin/sh", argv, environ);
             exit(1);
         break;
@@ -54,5 +59,9 @@ int main() {
 
     shell("ls -la", fd_pipe);
 
+    // printf("\n");
+    // for (uint8_t c =0 ; c < 10; c++){
+    //     printf("%d, ",c);
+    // }
     return 0;
 }
