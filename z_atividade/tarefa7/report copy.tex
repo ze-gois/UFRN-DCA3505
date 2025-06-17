@@ -1,0 +1,139 @@
+\documentclass[12pt]{article}
+\usepackage{fontspec}
+\usepackage[brazilian]{babel}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+
+\geometry{
+  a4paper,
+  margin=2.5cm
+}
+
+\lstset{
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{orange},
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  showstringspaces=false,
+  tabsize=2
+}
+
+\title{Tarefa 7: Algoritmo de Peterson}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Por que usar enter\_region e leave\_region para estabelecer uma região crítica não funciona com compiladores modernos?}
+
+Os compiladores modernos realizam diversas otimizações de código que podem comprometer o funcionamento do algoritmo de Peterson:
+
+\begin{itemize}
+    \item \textbf{Reordenamento de código:} Os compiladores podem alterar a ordem das instruções se acreditarem que isso não afetará a lógica do programa. No algoritmo de Peterson, a ordem exata das operações é crucial. Por exemplo, se a instrução \texttt{turn = process} for executada antes de \texttt{interested[process] = TRUE}, o algoritmo quebra.
+
+    \item \textbf{Cache em registradores:} Os compiladores podem armazenar variáveis compartilhadas em registradores para melhorar o desempenho. Quando um processo atualiza uma variável compartilhada, outro processo pode ler um valor desatualizado em cache em vez do valor atual na memória.
+
+    \item \textbf{Otimização de loops:} O loop de espera (\texttt{while (turn == process \&\& interested[other] == TRUE)}) pode ser otimizado ou transformado porque aparentemente não faz nada. O compilador pode não perceber que está esperando outro processo alterar esses valores.
+
+    \item \textbf{Eliminação de armazenamentos redundantes:} Sem anotações adequadas, os compiladores podem eliminar operações de memória que consideram desnecessárias, especialmente quando uma variável é escrita mas aparentemente nunca usada.
+\end{itemize}
+
+\section{Como os problemas descritos na pergunta anterior podem ser resolvidos?}
+
+Essas questões de otimização do compilador podem ser resolvidas através de vários métodos:
+
+\begin{itemize}
+    \item \textbf{Palavra-chave volatile:} Declarar variáveis compartilhadas como \texttt{volatile} informa ao compilador que essas variáveis podem mudar inesperadamente e não devem ser otimizadas:
+
+    \begin{lstlisting}
+    volatile int turn;
+    volatile int interested[N];
+    \end{lstlisting}
+
+    \item \textbf{Barreiras de memória:} Adicionar barreiras de compilador para evitar reordenamento de instruções:
+
+    \begin{lstlisting}
+    interested[process] = TRUE;
+    __sync_synchronize(); // Barreira de compilador
+    turn = process;
+    __sync_synchronize(); // Barreira de compilador
+    \end{lstlisting}
+
+    \item \textbf{Diretivas específicas do compilador:} Alguns compiladores oferecem diretivas específicas para impedir a otimização:
+
+    \begin{lstlisting}
+    #pragma optimize("", off)
+    // Código do algoritmo de Peterson
+    #pragma optimize("", on)
+    \end{lstlisting}
+
+    \item \textbf{Primitivas de sincronização padrão:} Usar ferramentas de sincronização de threads fornecidas pela linguagem, como mutexes do \texttt{<threads.h>} do C11 ou threads POSIX.
+\end{itemize}
+
+\section{Com os problemas dos compiladores modernos resolvidos, qual problema ainda impede que o algoritmo de Peterson funcione em processadores modernos?}
+
+Mesmo depois de resolver os problemas de otimização do compilador, as arquiteturas de processadores modernos introduzem desafios adicionais:
+
+\begin{itemize}
+    \item \textbf{Problemas de ordenação de memória:} Processadores modernos utilizam modelos de ordenação de memória relaxados em vez de consistência sequencial. Isso significa que as operações de memória podem não ser executadas na ordem especificada no código, mesmo sem reordenamento pelo compilador.
+
+    \item \textbf{Buffers de armazenamento e caches:} Os processadores frequentemente armazenam operações em buffer para melhorar o desempenho. Uma CPU pode escrever em uma variável, mas outra CPU pode não ver essa alteração imediatamente porque:
+    \begin{itemize}
+        \item A escrita está em um buffer de armazenamento
+        \item As CPUs têm diferentes versões em cache da memória
+    \end{itemize}
+
+    \item \textbf{Execução fora de ordem:} Os processadores modernos executam instruções fora de ordem para otimizar o desempenho. Isso pode quebrar as suposições de sequência no algoritmo de Peterson.
+
+    \item \textbf{Operações de memória não-atômicas:} Operações simples como atribuição de variáveis podem não ser atômicas em arquiteturas modernas, especialmente para variáveis que abrangem múltiplas palavras.
+\end{itemize}
+
+\section{Como os problemas descritos na pergunta anterior podem ser resolvidos?}
+
+Para resolver problemas em nível de processador com o algoritmo de Peterson:
+
+\begin{itemize}
+    \item \textbf{Barreiras de memória de hardware:} Inserir barreiras/cercas de memória para forçar a ordenação:
+
+    \begin{lstlisting}
+    interested[process] = TRUE;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST); // Barreira de hardware
+    turn = process;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST); // Barreira de hardware
+    \end{lstlisting}
+
+    \item \textbf{Operações atômicas:} Usar operações atômicas que garantem ordenação tanto no compilador quanto no hardware:
+
+    \begin{lstlisting}
+    __atomic_store_n(&interested[process], TRUE, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&turn, process, __ATOMIC_SEQ_CST);
+    \end{lstlisting}
+
+    \item \textbf{Atomicidade em nível de linguagem:} Usar a biblioteca atômica do C11:
+
+    \begin{lstlisting}
+    #include <stdatomic.h>
+    atomic_int turn;
+    atomic_int interested[N];
+    // Usar atomic_store, atomic_load, etc.
+    \end{lstlisting}
+
+    \item \textbf{Mecanismos de sincronização padrão:} Substituir a implementação personalizada por primitivas de sincronização padrão e bem testadas:
+    \begin{itemize}
+        \item Mutexes (\texttt{pthread\_mutex\_t})
+        \item Semáforos (\texttt{sem\_t})
+        \item Locks de leitura-escrita (\texttt{pthread\_rwlock\_t})
+    \end{itemize}
+
+    Esses mecanismos são projetados especificamente para lidar com desafios tanto em nível de compilador quanto de processador na programação concorrente.
+\end{itemize}
+
+\end{document}

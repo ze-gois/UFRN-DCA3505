@@ -106,6 +106,16 @@ Sem otimizações, as duas threads executam estas três operações concorrentem
 
 Neste cenário, embora duas operações de incremento tenham sido realizadas, o valor final é incrementado apenas uma vez. Este fenômeno, conhecido como condição de corrida, ocorre repetidamente durante a execução, resultando em um valor final menor que 2 milhões.
 
+Analisando o código assembly gerado pela compilação sem otimizações, podemos ver claramente essas três operações:
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+117b:	48 8b 05 b6 2e 00 00 	mov    0x2eb6(%rip),%rax        # 4038 <valor>
+1182:	48 83 c0 01          	add    $0x1,%rax
+1186:	48 89 05 ab 2e 00 00 	mov    %rax,0x2eab(%rip)        # 4038 <valor>
+\end{lstlisting}
+
+Estas três instruções correspondem exatamente às três operações descritas: a primeira instrução lê o valor atual para o registrador RAX, a segunda instrução incrementa o valor no registrador, e a terceira instrução escreve o novo valor de volta à memória. Como as duas threads executam essas mesmas instruções concorrentemente, a condição de corrida ocorre frequentemente.
+
 \subsection{Por que o resultado é 2 milhões quando habilitamos as otimizações do gcc?}
 
 Com as otimizações habilitadas (\texttt{-O3}), o compilador GCC transforma significativamente o código gerado. Ao analisar o código assembly produzido, observamos que o compilador realiza otimizações agressivas:
@@ -117,6 +127,18 @@ Com as otimizações habilitadas (\texttt{-O3}), o compilador GCC transforma sig
 \end{enumerate}
 
 Essencialmente, com a otimização, cada thread efetivamente executa \texttt{valor += 1000000} como uma operação única, eliminando o problema de concorrência presente na versão sem otimização.
+
+Analisando o código assembly gerado com otimizações, podemos ver esta transformação claramente:
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+0000000000001200 <thread>:
+    1200:	48 81 05 2d 2e 00 00 	addq   $0xf4240,0x2e2d(%rip)        # 4038 <valor>
+    1207:	40 42 0f 00
+    120b:	31 c0                	xor    %eax,%eax
+    120d:	c3                   	ret
+\end{lstlisting}
+
+Observe que toda a função \texttt{thread} foi reduzida a apenas uma única instrução \texttt{addq} que adiciona diretamente o valor hexadecimal \texttt{\$0xf4240} (1.000.000 em decimal) à variável \texttt{valor}. Isso elimina completamente o laço e reduz significativamente a janela de oportunidade para condições de corrida.
 
 \subsection{Com as otimizações habilitadas, seria possível o valor final ser menos de 2 milhões? Por quê?}
 
@@ -163,14 +185,13 @@ Alternativa usando operações atômicas:
 #include <stdio.h>
 #include <stdint.h>
 #include <pthread.h>
-#include <stdatomic.h>
 
-atomic_uint_least64_t valor = 0;
+_Atomic uint64_t valor = 0;
 
 void* thread(void* arg) {
     size_t i = 1000000;
     while (i--) {
-        atomic_fetch_add(&valor, 1);
+        valor++;
     }
     return NULL;
 }
@@ -178,14 +199,45 @@ void* thread(void* arg) {
 
 Estas soluções resolvem o problema porque garantem que as operações de incremento sejam atômicas. No caso do mutex, apenas uma thread por vez pode executar o código protegido pelo mutex, eliminando a condição de corrida. As operações atômicas, por sua vez, utilizam instruções especiais de hardware que garantem atomicidade para operações básicas como incremento, também eliminando a condição de corrida.
 
-Ambas as soluções garantirão que o resultado seja consistentemente 2 milhões, independentemente das otimizações do compilador. A solução com operações atômicas tende a ser mais eficiente que a solução com mutex, especialmente para operações simples como incremento.
+Analisando o código assembly da versão que usa mutex, vemos a implementação da exclusão mútua:
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+119f:	48 8d 05 da 2e 00 00 	lea    0x2eda(%rip),%rax        # 4080 <mutex>
+11a6:	48 89 c7             	mov    %rax,%rdi
+11a9:	e8 d2 fe ff ff       	call   1080 <pthread_mutex_lock@plt>
+\end{lstlisting}
+
+Seguido pelo incremento e pelo desbloqueio do mutex. Esta implementação garante que apenas uma thread por vez pode executar a operação de incremento, eliminando a condição de corrida.
+
+Na versão atômica, o compilador gera instruções especiais que utilizam recursos de hardware para garantir atomicidade nas operações. Ambas as soluções garantirão que o resultado seja consistentemente 2 milhões, independentemente das otimizações do compilador.
+
+\begin{lstlisting}[language={[x86masm]Assembler}]
+119a:	f0 48 0f c1 05 95 2e 	lock xadd %rax,0x2e95(%rip)        # 4038 <valor>
+\end{lstlisting}
+
+A solução com operações atômicas tende a ser mais eficiente que a solução com mutex, especialmente para operações simples como incremento, pois evita as chamadas de sistema associadas com as operações de lock e unlock do mutex.
+
+\section{Análise dos Resultados de Execução}
+
+Ao executar as quatro versões do programa (padrão, otimizado, mutex e atômico), obtemos os seguintes resultados:
+
+\begin{itemize}
+    \item Versão padrão (sem otimizações): \texttt{Valor final: 1011116} (varia entre execuções)
+    \item Versão otimizada (-O3): \texttt{Valor final: 2000000} (consistente)
+    \item Versão com mutex: \texttt{Valor final: 2000000} (consistente)
+    \item Versão com variáveis atômicas: \texttt{Valor final: 2000000} (consistente)
+\end{itemize}
+
+Estes resultados confirmam nossa análise teórica. A versão sem otimizações sofre de condição de corrida, resultando em um valor final menor que 2 milhões. As outras versões garantem o resultado correto, cada uma por meio de um mecanismo diferente.
 
 \section{Conclusão}
 
 Este trabalho demonstra os desafios intrínsecos à programação concorrente e como o comportamento de programas com threads pode ser significativamente afetado pelas otimizações do compilador. A condição de corrida observada é um problema clássico em sistemas concorrentes, e sua resolução requer o uso adequado de mecanismos de sincronização.
 
+A análise do código assembly gerado pelo compilador em diferentes cenários foi fundamental para compreender como o GCC transforma o código fonte e como essas transformações afetam o comportamento do programa em ambiente multithread. Com otimizações habilitadas, o compilador pode reduzir drasticamente a complexidade do código, eliminando laços e substituindo-os por operações mais diretas, como vimos na adição direta de 1.000.000 ao valor.
+
 Além disso, este exemplo ilustra como as otimizações do compilador podem modificar drasticamente o comportamento do programa, às vezes mascarando problemas subjacentes de concorrência que permanecem teoricamente presentes, mesmo que raramente se manifestem na prática.
 
-Para garantir a correção de programas concorrentes, é essencial compreender os mecanismos de sincronização disponíveis e aplicá-los adequadamente, independentemente do nível de otimização utilizado na compilação.
+Para garantir a correção de programas concorrentes, é essencial compreender os mecanismos de sincronização disponíveis e aplicá-los adequadamente, independentemente do nível de otimização utilizado na compilação. O uso de mutexes ou variáveis atômicas são soluções robustas que garantem resultados corretos mesmo em ambientes de alta concorrência.
 
 \end{document}
