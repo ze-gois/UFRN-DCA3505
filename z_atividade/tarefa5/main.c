@@ -6,7 +6,9 @@
 
 #define N_THREADS 2
 #define N_THREAD_COUNT 1000000
+
 uint64_t valor = 0;
+_Atomic uint64_t valor_atomic = 0;
 
 struct TA {
     size_t id;
@@ -19,7 +21,8 @@ void* thread_function(void* arg) {
     while (i--) {
         ta->c++;
         valor++;
-        printf("%zu -> (%zu,%zu)\n ",ta->id, ta->c, valor);
+        valor_atomic++;
+        printf("%zu -> (%zu,%zu,%zu)\n ",ta->id, ta->c, valor, valor_atomic);
     }
 
     free(ta);
@@ -51,7 +54,7 @@ int main() {
         }
     }
 
-    printf("All threads completed. Final counter value: %zu\n", valor);
+    printf("All threads completed. Final counter value: (%zu,%zu)\n", valor, valor_atomic);
 
     return 0;
 }
