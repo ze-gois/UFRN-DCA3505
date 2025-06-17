@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
+#include <stdlib.h>
 
 /* whose turn is it? */
 int turn;
@@ -26,8 +28,16 @@ void enter_region(int process){
     interested[process] = TRUE;
     /* set flag */
     turn = process;
-    /* null statement */
-    while (turn == process && interested[other] == TRUE);
+    
+    /* null statement com timeout para evitar deadlock */
+    time_t start_time = time(NULL);
+    while (turn == process && interested[other] == TRUE) {
+        /* Verificar timeout após 2 segundos para evitar spinlock infinito */
+        if (time(NULL) - start_time > 2) {
+            printf("Timeout no processo %d! Isso demonstra o problema com otimizações.\n", process);
+            break;
+        }
+    }
 }
 
 /* process: who is leaving */
@@ -57,8 +67,14 @@ int main() {
     pthread_t threads[N];
     int process_ids[N];
     
-    printf("Demonstração do algoritmo de Peterson (versão original)\n");
+#if OPTIMIZED
+    printf("Demonstração do algoritmo de Peterson (versão original COM otimizações)\n");
     printf("Este exemplo poderá falhar devido a otimizações do compilador e reordenamento de memória\n");
+#else
+    printf("Demonstração do algoritmo de Peterson (versão original SEM otimizações)\n");
+    printf("Este exemplo poderá funcionar pois as otimizações do compilador estão desativadas (-O0)\n");
+    printf("A flag -O0 instrui o compilador a não realizar otimizações, preservando a ordem das operações\n");
+#endif
     
     // Inicializar valores
     turn = 0;
@@ -86,9 +102,19 @@ int main() {
     
     if (shared_counter == N * MAX_COUNT) {
         printf("Sucesso! O algoritmo funcionou corretamente.\n");
+#if OPTIMIZED
+        printf("Isto é surpreendente com as otimizações ativadas!\n");
+#else
+        printf("Como esperado, sem otimizações (-O0) o algoritmo pode funcionar bem.\n");
+        printf("Isso mostra que as otimizações do compilador são uma das causas do problema!\n");
+#endif
     } else {
         printf("Falha! O algoritmo não garantiu exclusão mútua.\n");
+#if OPTIMIZED
         printf("Isso demonstra os problemas com compiladores e processadores modernos.\n");
+#else
+        printf("Mesmo sem otimizações, problemas de reordenamento no processador podem ocorrer.\n");
+#endif
     }
     
     return 0;

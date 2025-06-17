@@ -31,7 +31,7 @@
 \begin{document}
 
 \maketitle
-
+\pagebreak
 \section{Por que usar enter\_region e leave\_region para estabelecer uma região crítica não funciona com compiladores modernos?}
 
 Os compiladores modernos realizam diversas otimizações de código que podem comprometer o funcionamento do algoritmo de Peterson:
@@ -45,7 +45,7 @@ Os compiladores modernos realizam diversas otimizações de código que podem co
 
     \item \textbf{Eliminação de armazenamentos redundantes:} Sem anotações adequadas, os compiladores podem eliminar operações de memória que consideram desnecessárias, especialmente quando uma variável é escrita mas aparentemente nunca usada.
 \end{itemize}
-
+\pagebreak
 \section{Como os problemas descritos na pergunta anterior podem ser resolvidos?}
 
 Essas questões de otimização do compilador podem ser resolvidas através de vários métodos:
@@ -77,7 +77,7 @@ Essas questões de otimização do compilador podem ser resolvidas através de v
 
     \item \textbf{Primitivas de sincronização padrão:} Usar ferramentas de sincronização de threads fornecidas pela linguagem, como mutexes do \texttt{<threads.h>} do C11 ou threads POSIX.
 \end{itemize}
-
+\pagebreak
 \section{Com os problemas dos compiladores modernos resolvidos, qual problema ainda impede que o algoritmo de Peterson funcione em processadores modernos?}
 
 Mesmo depois de resolver os problemas de otimização do compilador, as arquiteturas de processadores modernos introduzem desafios adicionais:
@@ -95,7 +95,7 @@ Mesmo depois de resolver os problemas de otimização do compilador, as arquitet
 
     \item \textbf{Operações de memória não-atômicas:} Operações simples como atribuição de variáveis podem não ser atômicas em arquiteturas modernas, especialmente para variáveis que abrangem múltiplas palavras.
 \end{itemize}
-
+\pagebreak
 \section{Como os problemas descritos na pergunta anterior podem ser resolvidos?}
 
 Para resolver problemas em nível de processador com o algoritmo de Peterson:
@@ -135,5 +135,154 @@ Para resolver problemas em nível de processador com o algoritmo de Peterson:
 
     Esses mecanismos são projetados especificamente para lidar com desafios tanto em nível de compilador quanto de processador na programação concorrente.
 \end{itemize}
+\pagebreak
+\section{Demonstrações Práticas}
+
+Para demonstrar empiricamente os problemas e soluções discutidos anteriormente, foram implementadas cinco versões do algoritmo de Peterson:
+
+\subsection{Implementação Original}
+
+A implementação original do algoritmo de Peterson, quando compilada com otimizações:
+
+\begin{lstlisting}
+/* process is 0 or 1 */
+void enter_region(int process){
+    /* number of the other process */
+    int other;
+    /* the opposite of process */
+    other = 1 - process;
+    /* show that you are interested */
+    interested[process] = TRUE;
+    /* set flag */
+    turn = process;
+    /* null statement */
+    while (turn == process && interested[other] == TRUE);
+}
+\end{lstlisting}
+
+Esta implementação apresenta comportamento não-determinístico em sistemas modernos:
+\begin{itemize}
+    \item Em algumas execuções, entra em \textit{spinlock} infinito
+    \item Em outras, pode funcionar corretamente por acaso
+    \item Frequentemente, falha na garantia de exclusão mútua
+\end{itemize}
+
+\subsection{Desativando Otimizações do Compilador}
+
+Quando compilamos o mesmo código com a flag \texttt{-O0}, desativando otimizações:
+
+\begin{lstlisting}
+$ gcc -o programa programa.c -pthread -O0
+\end{lstlisting}
+
+A probabilidade de funcionamento correto aumenta, mas ainda pode falhar devido ao reordenamento em nível de processador.
+
+\subsection{Usando Operações Atômicas}
+
+Implementação usando operações atômicas do GCC:
+
+\begin{lstlisting}
+void enter_region(int process){
+    int other = 1 - process;
+
+    /* usando operação atômica */
+    __atomic_store_n(&interested[process], TRUE, __ATOMIC_SEQ_CST);
+
+    /* usando operação atômica */
+    __atomic_store_n(&turn, process, __ATOMIC_SEQ_CST);
+
+    /* leitura atômica no loop de espera */
+    int other_interested, current_turn;
+    do {
+        __atomic_load(&interested[other], &other_interested, __ATOMIC_SEQ_CST);
+        __atomic_load(&turn, &current_turn, __ATOMIC_SEQ_CST);
+    } while (current_turn == process && other_interested == TRUE);
+}
+\end{lstlisting}
+
+\subsection{Usando Biblioteca Atômica do C11}
+
+Implementação com a biblioteca \texttt{stdatomic.h} do C11:
+
+\begin{lstlisting}
+#include <stdatomic.h>
+
+/* usando tipo atômico do C11 */
+atomic_int turn;
+atomic_int interested[N];
+
+void enter_region(int process){
+    int other = 1 - process;
+
+    /* usando API atômica do C11 */
+    atomic_store_explicit(&interested[process], TRUE, memory_order_seq_cst);
+    atomic_store_explicit(&turn, process, memory_order_seq_cst);
+
+    /* leitura atômica no loop de espera */
+    while (atomic_load_explicit(&turn, memory_order_seq_cst) == process &&
+           atomic_load_explicit(&interested[other], memory_order_seq_cst) == TRUE);
+}
+\end{lstlisting}
+
+\subsection{Usando Barreiras de Memória}
+
+Implementação com barreiras de memória:
+
+\begin{lstlisting}
+/* declarada como volatile */
+volatile int turn;
+volatile int interested[N];
+
+void enter_region(int process){
+    int other = 1 - process;
+
+    interested[process] = TRUE;
+    /* barreira de memória */
+    __sync_synchronize();
+
+    turn = process;
+    /* barreira de memória */
+    __sync_synchronize();
+
+    /* barreira dentro do loop de espera */
+    while (1) {
+        __sync_synchronize();
+        if (!(turn == process && interested[other] == TRUE))
+            break;
+    }
+}
+\end{lstlisting}
+
+\subsection{Usando Mutex POSIX}
+
+A abordagem mais recomendada para sistemas modernos é abandonar o algoritmo de Peterson e usar primitivas de sincronização padronizadas:
+
+\begin{lstlisting}
+#include <pthread.h>
+
+/* Substituindo algoritmo por mutex */
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void enter_region(int process){
+    pthread_mutex_lock(&mutex);
+}
+
+void leave_region(int process){
+    pthread_mutex_unlock(&mutex);
+}
+\end{lstlisting}
+
+\subsection{Resultados Obtidos}
+
+Testes práticos com estas implementações confirmaram:
+
+\begin{itemize}
+    \item Versão original: exibe comportamento imprevisível e falhas frequentes
+    \item Versão sem otimizações: funciona melhor, mas ainda pode falhar
+    \item Versões com operações atômicas: funcionam consistentemente
+    \item Versão com mutex POSIX: solução mais robusta e recomendada
+\end{itemize}
+
+Estes resultados experimentais validam a necessidade das técnicas discutidas anteriormente para garantir o funcionamento correto de algoritmos de exclusão mútua em sistemas modernos.
 
 \end{document}
