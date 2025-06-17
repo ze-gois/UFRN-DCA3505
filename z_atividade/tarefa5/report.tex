@@ -32,4 +32,160 @@
 
 \maketitle
 
+\section{Implementação}
+
+Foi implementado um programa em linguagem C que cria duas threads que incrementam concorrentemente uma variável global compartilhada:
+
+\begin{lstlisting}[language=C]
+#include <stdio.h>
+#include <stdint.h>
+#include <pthread.h>
+
+uint64_t valor = 0;
+
+void* thread(void* arg) {
+    size_t i = 1000000;
+    while (i--) {
+        valor++;
+    }
+    return NULL;
+}
+
+int main() {
+    pthread_t t1, t2;
+
+    // Criar duas threads
+    pthread_create(&t1, NULL, thread, NULL);
+    pthread_create(&t2, NULL, thread, NULL);
+
+    // Aguardar as threads terminarem
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
+
+    // Imprimir o resultado
+    printf("Valor final: %lu\n", valor);
+
+    return 0;
+}
+\end{lstlisting}
+
+O programa foi compilado de duas formas diferentes: uma com as configurações padrão do GCC e outra com otimizações habilitadas (\texttt{-O3}).
+
+\section{Análise do Comportamento}
+
+\subsection{Resultado Sem Otimizações}
+
+Ao executar o programa compilado com as configurações padrão do GCC, o resultado final é consistentemente menor que 2 milhões, variando em cada execução.
+
+\subsection{Resultado Com Otimizações}
+
+Ao compilar o programa com a flag \texttt{-O3}, o resultado é sempre exatamente 2 milhões.
+
+\section{Respostas às Questões}
+
+\subsection{Por que o resultado não é 2 milhões quando compilado com gcc nas configurações padrões?}
+
+O resultado não é 2 milhões devido a uma condição de corrida (\textit{race condition}) entre as duas threads. A operação \texttt{valor++} não é atômica e, na realidade, é composta por três operações distintas:
+
+\begin{enumerate}
+    \item Ler o valor atual da variável da memória para um registrador
+    \item Incrementar o valor no registrador
+    \item Escrever o novo valor de volta na memória
+\end{enumerate}
+
+Sem otimizações, as duas threads executam estas três operações concorrentemente, o que pode levar a cenários como:
+
+\begin{enumerate}
+    \item Thread 1 lê o valor atual (por exemplo, 1000)
+    \item Thread 2 lê o mesmo valor atual (1000)
+    \item Thread 1 incrementa para 1001
+    \item Thread 2 incrementa para 1001
+    \item Thread 1 escreve 1001
+    \item Thread 2 escreve 1001
+\end{enumerate}
+
+Neste cenário, embora duas operações de incremento tenham sido realizadas, o valor final é incrementado apenas uma vez. Este fenômeno, conhecido como condição de corrida, ocorre repetidamente durante a execução, resultando em um valor final menor que 2 milhões.
+
+\subsection{Por que o resultado é 2 milhões quando habilitamos as otimizações do gcc?}
+
+Com as otimizações habilitadas (\texttt{-O3}), o compilador GCC transforma significativamente o código gerado. Ao analisar o código assembly produzido, observamos que o compilador realiza otimizações agressivas:
+
+\begin{enumerate}
+    \item O compilador percebe que o laço \texttt{while (i--)} está simplesmente incrementando \texttt{valor} um milhão de vezes
+    \item Em vez de executar o incremento em um laço, o compilador substitui todo o código da função por uma única operação que adiciona 1.000.000 diretamente à variável \texttt{valor}
+    \item Esta única operação é atômica do ponto de vista da função, resultando em exatamente 2 milhões após ambas as threads serem executadas
+\end{enumerate}
+
+Essencialmente, com a otimização, cada thread efetivamente executa \texttt{valor += 1000000} como uma operação única, eliminando o problema de concorrência presente na versão sem otimização.
+
+\subsection{Com as otimizações habilitadas, seria possível o valor final ser menos de 2 milhões? Por quê?}
+
+Sim, ainda seria teoricamente possível obter um valor menor que 2 milhões mesmo com as otimizações habilitadas. Embora o compilador tenha otimizado o código para que cada thread realize uma única operação \texttt{valor += 1000000}, esta operação ainda não é atômica no nível do hardware quando se trata de múltiplas threads.
+
+A operação otimizada ainda segue o mesmo padrão básico de leitura-modificação-escrita:
+
+\begin{enumerate}
+    \item Ler o valor atual de \texttt{valor}
+    \item Adicionar 1.000.000
+    \item Escrever o resultado de volta
+\end{enumerate}
+
+Se a segunda thread ler o valor inicial antes que a primeira thread tenha escrito seu resultado, ainda ocorrerá uma condição de corrida. No entanto, a probabilidade disso acontecer é drasticamente reduzida em comparação com a versão sem otimização, pois agora há apenas uma operação por thread em vez de um milhão.
+
+Na prática, devido ao tempo necessário para a criação das threads e a baixa probabilidade de colisão exata no momento crítico, o resultado quase sempre será 2 milhões com otimizações, mas não há garantia absoluta.
+
+\subsection{Forma de implementar que resolve o problema da contagem errada}
+
+Uma solução para este problema seria utilizar mecanismos de sincronização, como mutexes ou operações atômicas:
+
+\begin{lstlisting}[language=C]
+#include <stdio.h>
+#include <stdint.h>
+#include <pthread.h>
+
+uint64_t valor = 0;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void* thread(void* arg) {
+    size_t i = 1000000;
+    while (i--) {
+        pthread_mutex_lock(&mutex);
+        valor++;
+        pthread_mutex_unlock(&mutex);
+    }
+    return NULL;
+}
+\end{lstlisting}
+
+Alternativa usando operações atômicas:
+
+\begin{lstlisting}[language=C]
+#include <stdio.h>
+#include <stdint.h>
+#include <pthread.h>
+#include <stdatomic.h>
+
+atomic_uint_least64_t valor = 0;
+
+void* thread(void* arg) {
+    size_t i = 1000000;
+    while (i--) {
+        atomic_fetch_add(&valor, 1);
+    }
+    return NULL;
+}
+\end{lstlisting}
+
+Estas soluções resolvem o problema porque garantem que as operações de incremento sejam atômicas. No caso do mutex, apenas uma thread por vez pode executar o código protegido pelo mutex, eliminando a condição de corrida. As operações atômicas, por sua vez, utilizam instruções especiais de hardware que garantem atomicidade para operações básicas como incremento, também eliminando a condição de corrida.
+
+Ambas as soluções garantirão que o resultado seja consistentemente 2 milhões, independentemente das otimizações do compilador. A solução com operações atômicas tende a ser mais eficiente que a solução com mutex, especialmente para operações simples como incremento.
+
+\section{Conclusão}
+
+Este trabalho demonstra os desafios intrínsecos à programação concorrente e como o comportamento de programas com threads pode ser significativamente afetado pelas otimizações do compilador. A condição de corrida observada é um problema clássico em sistemas concorrentes, e sua resolução requer o uso adequado de mecanismos de sincronização.
+
+Além disso, este exemplo ilustra como as otimizações do compilador podem modificar drasticamente o comportamento do programa, às vezes mascarando problemas subjacentes de concorrência que permanecem teoricamente presentes, mesmo que raramente se manifestem na prática.
+
+Para garantir a correção de programas concorrentes, é essencial compreender os mecanismos de sincronização disponíveis e aplicá-los adequadamente, independentemente do nível de otimização utilizado na compilação.
+
 \end{document}
