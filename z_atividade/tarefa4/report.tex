@@ -1,0 +1,299 @@
+\documentclass[12pt]{article}
+\usepackage{fontspec}
+\usepackage[brazilian]{babel}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+
+\geometry{
+  a4paper,
+  margin=2.5cm
+}
+
+\lstset{
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{orange},
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=5pt,
+  showstringspaces=false,
+  tabsize=2
+}
+
+\title{Tarefa 4: Redirecionamento usando pipe}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+
+Este relatório descreve a implementação de um programa em linguagem C que demonstra o redirecionamento de saída padrão usando pipes. O programa executa um processo filho que roda o comando \texttt{ls -l} e redireciona sua saída padrão para um pipe, cujo outro lado é lido pelo processo pai até ser fechado.
+
+\section{Implementação}
+
+O programa implementa o seguinte fluxo:
+
+\begin{enumerate}
+    \item Cria um pipe usando a chamada de sistema \texttt{pipe()}
+    \item Cria um processo filho usando \texttt{fork()}
+    \item No processo filho:
+        \begin{itemize}
+            \item Fecha o lado de leitura do pipe (não utilizado pelo filho)
+            \item Redireciona a saída padrão para o lado de escrita do pipe usando \texttt{dup2()}
+            \item Executa o comando \texttt{ls -l} usando \texttt{execlp()}
+        \end{itemize}
+    \item No processo pai:
+        \begin{itemize}
+            \item Fecha o lado de escrita do pipe (não utilizado pelo pai)
+            \item Lê dados do lado de leitura do pipe até que seja fechado (EOF)
+            \item Imprime os dados na tela
+            \item Espera a finalização do processo filho
+        \end{itemize}
+\end{enumerate}
+
+\section{Código Fonte}
+
+Abaixo está o código fonte do programa:
+
+\begin{lstlisting}[language=C]
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+
+#define BUFFER_SIZE 4096
+char buffer[BUFFER_SIZE];
+
+int pipe_fd[2];
+
+enum PID {
+    PID_PARENT,
+    PID_CHILD,
+    PID_FAIL,
+};
+
+enum PID check(pid_t pid) {
+    if (pid == 0) {
+        return PID_CHILD;
+    } else if (pid > 0) {
+        return PID_PARENT;
+    }
+    return PID_FAIL;
+}
+
+void parent(pid_t pid) {
+    printf("Parent process waiting for output from child...\n");
+
+    // Close the write end of the pipe in the parent
+    close(pipe_fd[1]);
+
+    // Read from the pipe until EOF
+    printf("\nOutput from child:\n");
+    printf("------------------\n");
+
+    ssize_t nof_bytes_read;
+
+    while ((nof_bytes_read = read(pipe_fd[0], buffer, BUFFER_SIZE - 1)) > 0) {
+        buffer[nof_bytes_read] = '\0';  // Null-terminate the string
+        printf("%s", buffer);
+    }
+
+    printf("------------------\n");
+
+    if (nof_bytes_read == -1) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+
+    // Close the read end of the pipe
+    close(pipe_fd[0]);
+
+    // Wait for theprograma child to terminate
+    int status;
+    waitpid(pid, &status, 0);
+
+    if (WIFEXITED(status)) {
+        printf("\nChild process exited with status %d\n", WEXITSTATUS(status));
+    } else {
+        printf("\nChild process did not exit normally\n");
+    }
+}
+
+void child(){
+    // Child process
+    printf("Child process executing 'ls -l'...\n");
+
+    // Close the read end of the pipe in the child
+    close(pipe_fd[0]);
+
+    // Redirect stdout to the write end of the pipe
+    if (dup2(pipe_fd[1], STDOUT_FILENO) == -1) {
+        perror("dup2");
+        exit(EXIT_FAILURE);
+    }
+
+    // Close the write end of the pipe as it's been duplicated
+    close(pipe_fd[1]);
+
+    // Execute the command
+    execlp("ls", "ls", "-l", NULL);
+
+    // If execlp returns, it must have failed
+    perror("execlp");
+    exit(EXIT_FAILURE);
+}
+
+int main() {
+    if (pipe(pipe_fd) == -1){
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+
+    switch (check(pid)) {
+        case PID_FAIL:
+            perror("fork");
+            exit(EXIT_FAILURE);
+            break;
+        case PID_PARENT:
+            parent(pid);
+            break;
+        case PID_CHILD:
+            child();
+            break;
+        default:
+            exit(1);
+    }
+
+    return 0;
+}
+\end{lstlisting}
+
+\section{Respostas às Perguntas}
+
+\subsection{Como funciona o mecanismo de redirecionamento?}
+
+O mecanismo de redirecionamento utilizando pipes funciona através da
+manipulação dos descritores de arquivos do processo. No Unix/Linux,
+cada processo tem pelo menos três descritores de arquivos padrão:
+entrada padrão (stdin, 0), saída padrão (stdout, 1) e erro padrão (stderr, 2).
+
+O redirecionamento utilizando pipes segue estas etapas fundamentais:
+
+\begin{enumerate}
+    \item Criação do pipe: A função \texttt{pipe(pipe\_fd)} cria dois descritores
+    de arquivo conectados, onde \texttt{pipe\_fd[0]} é a extremidade de leitura e
+    \texttt{pipe\_fd[1]} a extremidade de escrita.
+
+    \item Duplicação de descritores: A função \texttt{dup2(pipe\_fd[1], STDOUT\_FILENO)} faz com que o descritor da saída padrão (STDOUT\_FILENO ou 1) passe a se referir ao mesmo arquivo que \texttt{pipe\_fd[1]} (extremidade de escrita do pipe).
+
+    \item Após esta operação, qualquer saída enviada para stdout (por exemplo, através de printf) na verdade será escrita no pipe.
+
+    \item Fechamento dos descritores não utilizados: Depois de duplicar os descritores necessários, fechamos os originais para manter a higiene do sistema.
+\end{enumerate}
+
+Dessa maneira, quando o processo filho executa \texttt{ls -l}, sua saída que normalmente iria para o terminal é redirecionada para o pipe, onde o processo pai pode lê-la.
+
+\subsection{Por que o processo pai precisa fechar o lado da escrita da pipe?}
+
+O processo pai precisa fechar o lado de escrita do pipe por várias razões importantes:
+
+\begin{enumerate}
+    \item Detecção de EOF (End of File): Quando o processo pai lê do pipe usando a função \texttt{read()}, ele só receberá um retorno de 0 bytes (indicando EOF) quando todas as extremidades de escrita do pipe estiverem fechadas. Se o pai não fechar sua cópia do descritor de escrita, o \texttt{read()} nunca retornará EOF, mesmo se o processo filho terminar, pois ainda existe um descritor de escrita aberto.
+
+    \item Gerenciamento de recursos: Os descritores de arquivos são recursos limitados do sistema operacional. É uma boa prática fechar descritores que não serão utilizados.
+
+    \item Prevenção de deadlocks: Em situações mais complexas com múltiplos processos, não fechar descritores não utilizados pode levar a situações de deadlock, onde processos esperam indefinidamente por dados que nunca chegarão.
+\end{enumerate}
+
+Portanto, é essencial que cada processo feche os lados do pipe que não irá utilizar: o processo filho fecha a extremidade de leitura, e o processo pai fecha a extremidade de escrita.
+
+\subsection{O que mudaria se o processo pai quisesse redirecionar a saída de erro padrão?}
+
+Para redirecionar a saída de erro padrão (stderr) em vez da saída padrão (stdout), seriam necessárias as seguintes alterações no código:
+
+No processo filho, ao invés de:
+\begin{lstlisting}[language=C]
+dup2(pipe\_fd[1], STDOUT_FILENO);  // Redireciona stdout para o pipe
+\end{lstlisting}
+
+Usaríamos:
+\begin{lstlisting}[language=C]
+dup2(pipe\_fd[1], STDERR_FILENO);  // Redireciona stderr para o pipe
+\end{lstlisting}
+
+Onde \texttt{STDERR\_FILENO} é a constante para o descritor de arquivo do erro padrão (geralmente 2).
+
+Alternativamente, se quiséssemos redirecionar tanto stdout quanto stderr para o pipe, poderíamos usar ambas as chamadas:
+\begin{lstlisting}[language=C]
+dup2(pipe\_fd[1], STDOUT_FILENO);  // Redireciona stdout para o pipe
+dup2(pipe\_fd[1], STDERR_FILENO);  // Redireciona stderr para o pipe
+\end{lstlisting}
+
+O restante do código permaneceria essencialmente o mesmo, já que o processo pai leria do pipe da mesma forma, independentemente de a saída vir de stdout ou stderr do processo filho.
+
+\subsection{E se quisesse redirecionar a entrada padrão?}
+
+Para redirecionar a entrada padrão, teríamos que inverter o fluxo de dados no pipe. No caso de redirecionamento da entrada padrão:
+
+\begin{enumerate}
+    \item O processo pai escreveria dados no pipe
+    \item O processo filho leria esses dados como sua entrada padrão
+\end{enumerate}
+
+As alterações necessárias no código seriam:
+
+No processo filho:
+\begin{lstlisting}[language=C]
+// Fechar o lado de escrita (não será usado pelo filho)
+close(pipe\_fd[1]);
+
+// Redirecionar a entrada padrão para o lado de leitura do pipe
+dup2(pipe\_fd[0], STDIN_FILENO);
+
+// Fechar o descritor original de leitura após duplicação
+close(pipe\_fd[0]);
+
+// Executar um comando que leia da entrada padrão
+execlp("sort", "sort", NULL);  // Exemplo: o comando sort lê da stdin
+\end{lstlisting}
+
+No processo pai:
+\begin{lstlisting}[language=C]
+// Fechar o lado de leitura (não será usado pelo pai)
+close(pipe\_fd[0]);
+
+// Escrever dados no pipe
+const char *data = "linha 3\nlinha 1\nlinha 2\n";
+write(pipe\_fd[1], data, strlen(data));
+
+// Fechar o lado de escrita para sinalizar EOF para o filho
+close(pipe\_fd[1]);
+\end{lstlisting}
+
+Neste cenário, o processo pai enviaria dados para o pipe e o processo filho receberia esses dados como sua entrada padrão. O comando executado pelo filho (no exemplo, o comando "sort") receberia esses dados como se fossem digitados no teclado.
+
+\section{Conclusão}
+
+O uso de pipes para redirecionamento de entrada e saída é um mecanismo fundamental em sistemas Unix/Linux, permitindo a comunicação interprocessos e a construção de pipelines de comandos. A implementação correta envolve a compreensão de como os descritores de arquivo funcionam e como eles podem ser manipulados para redirecionar fluxos de dados.
+
+Os aspectos mais importantes a serem observados são:
+\begin{itemize}
+    \item Fechar os descritores não utilizados em cada processo
+    \item Usar \texttt{dup2()} para redirecionar os fluxos padrão
+    \item Entender como a detecção de EOF funciona em pipes
+\end{itemize}
+
+Esta técnica é extensivamente utilizada em shells e outros programas que precisam construir pipelines de processamento ou capturar a saída de comandos para processamento adicional.
+
+\end{document}
