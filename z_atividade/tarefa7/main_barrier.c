@@ -14,7 +14,7 @@ volatile int interested[N];
 
 /* Contador compartilhado que será incrementado na região crítica */
 volatile int shared_counter = 0;
-#define MAX_COUNT 10000
+#define MAX_COUNT 10000000
 
 /* process is 0 or 1 */
 void enter_region(int process){

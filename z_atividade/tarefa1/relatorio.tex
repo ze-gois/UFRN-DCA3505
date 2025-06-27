@@ -35,7 +35,7 @@ _start:
     movl $42, %eax
 \end{verbatim}
 
-Este código foi compilado utilizando os seguintes comandos:
+Este código foi montado e ligado empregando os seguintes comandos:
 
 \begin{verbatim}
 $ as -o minimal.o minimal.s
@@ -77,7 +77,7 @@ Para corrigir a falha, foi necessário adicionar uma chamada de sistema para enc
 .global _start
 _start:
     movl $42, %eax      # Assign value 42 to EAX register
-    
+
     # Exit system call
     movl $1, %eax       # System call number for exit is 1
     movl $0, %ebx       # Return code 0 (success)
@@ -129,11 +129,11 @@ A chamada de sistema para encerramento (\texttt{exit}) é necessária pelos segu
 
 \begin{enumerate}
     \item \textbf{Liberação de recursos}: O sistema operacional precisa recuperar todos os recursos alocados ao processo, como memória, descritores de arquivo e outros recursos do sistema.
-    
+
     \item \textbf{Notificação de encerramento}: O processo pai (normalmente o shell) precisa ser notificado sobre o encerramento do processo filho e seu código de retorno.
-    
+
     \item \textbf{Atualização de tabelas internas}: O sistema operacional precisa atualizar suas tabelas internas para refletir que o processo não está mais em execução.
-    
+
     \item \textbf{Prevenção de falhas}: Sem um encerramento adequado, o processador tentaria executar instruções em áreas de memória não autorizadas, como demonstrado pelo experimento.
 \end{enumerate}
 
@@ -145,15 +145,15 @@ Se os programas de usuário pudessem ser executados livremente, sem recorrer ao 
 
 \begin{enumerate}
     \item \textbf{Comprometimento da segurança}: Programas poderiam acessar livremente memória de outros processos ou do kernel, comprometendo a segurança e a privacidade dos dados.
-    
+
     \item \textbf{Instabilidade do sistema}: Programas mal-comportados poderiam facilmente travar todo o sistema, não apenas a si mesmos.
-    
+
     \item \textbf{Alocação descontrolada de recursos}: Sem o controle do sistema operacional, programas poderiam consumir todos os recursos disponíveis, como memória e CPU, impedindo que outros programas funcionassem adequadamente.
-    
+
     \item \textbf{Conflitos de hardware}: Múltiplos programas poderiam tentar controlar o mesmo hardware simultaneamente, causando comportamentos imprevisíveis.
-    
+
     \item \textbf{Ausência de isolamento}: Sem o isolamento provido pelo sistema operacional, um bug em qualquer programa poderia afetar todo o sistema.
-    
+
     \item \textbf{Dificuldade no compartilhamento justo}: O sistema operacional implementa algoritmos de escalonamento e compartilhamento de recursos que seriam impossíveis sem seu controle centralizado.
 \end{enumerate}
 

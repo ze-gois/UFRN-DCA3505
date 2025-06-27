@@ -19,31 +19,33 @@ int shared_counter = 0;
 #define MAX_COUNT 10000000
 
 /* process is 0 or 1 */
-void enter_region(int process_id){
+void enter_region(int process){
+    #pragma optimize("", off)
     /* number of the other process */
     int other;
     /* the opposite of process */
-    other = 1 - process_id;
+    other = 1 - process;
     /* show that you are interested */
-    interested[process_id] = TRUE;
+    interested[process] = TRUE;
     /* set flag */
-    turn = process_id;
+    turn = process;
 
     /* null statement com timeout para evitar deadlock */
     time_t start_time = time(NULL);
-    while (turn == process_id && interested[other] == TRUE) {
+    while (turn == process && interested[other] == TRUE) {
         /* Verificar timeout após 2 segundos para evitar spinlock infinito */
         if (time(NULL) - start_time > 2) {
-            printf("Timeout no processo %d! Isso demonstra o problema com otimizações.\n", process_id);
+            printf("Timeout no processo %d! Isso demonstra o problema com otimizações.\n", process);
             break;
         }
     }
+    #pragma optimize("", on)
 }
 
 /* process: who is leaving */
-void leave_region(int process_id){
+void leave_region(int process){
     /* indicate departure from critical region */
-    interested[process_id] = FALSE;
+    interested[process] = FALSE;
 }
 
 /* Função que será executada pelas threads */

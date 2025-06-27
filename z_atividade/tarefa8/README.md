@@ -2,32 +2,20 @@ Tarefa 8: Mutexes
 
 Dada a implementação em linguagem C de um Mutex abaixo:
 
+```C
+    atomic_bool trava = false;
 
-atomic_bool trava =false;
+    void enter_region(void) {
+        bool v;
+        do {
+            v = false;
+        } while (!atomic_compare_exchange_strong(&trava, &v, true));
+    }
 
-
-voidenter_region(void)
-
-{
-
-       bool v;
-
-       do {
-
-               v =false;
-
-       } while (!atomic_compare_exchange_strong(&trava, &v, true));
-
-}
-
-
-voidleave_region(void)
-
-{
-
-       atomic_store(&trava, false);
-
-}
+    void leave_region(void) {
+        atomic_store(&trava, false);
+    }
+```
 
 
 Responda:
@@ -37,4 +25,3 @@ Responda:
 4. Implemente uma versão que resolve os problemas da questão anterior. Como ela resolve os problemas?
 
 Enviar relatório em PDF com no máximo 4 páginas ou 2000 palavras.
-

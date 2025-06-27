@@ -1,0 +1,301 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\footnotesize\ttfamily,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\title{Tarefa 9: Produtor e Consumidor}
+\author{Sistemas Operacionais}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Problema Fundamental da Implementação}
+
+O problema fundamental na implementação fornecida do produtor e consumidor está relacionado à ausência de sincronização adequada em um cenário de concorrência. As variáveis compartilhadas entre as threads (dados[], inserir e remover) são acessadas sem mecanismos de sincronização adequados, o que pode levar aos seguintes problemas:
+
+\subsection{Race conditions (Condições de corrida)}
+Quando múltiplas threads tentam acessar e modificar as mesmas variáveis simultaneamente, o resultado final pode ser inconsistente. Por exemplo, dois consumidores podem tentar ler o mesmo valor simultaneamente, resultando em comportamento indefinido.
+
+\subsection{Acesso não atômico}
+As operações de leitura e escrita das variáveis compartilhadas não são atômicas. Isso significa que uma thread pode ser interrompida no meio da atualização dos índices inserir ou remover, levando a inconsistências.
+
+\subsection{Busy waiting ineficiente}
+O código utiliza busy waiting (espera ocupada) nos loops:
+\begin{lstlisting}[language=C]
+// No produtor
+while (((inserir + 1) % TAMANHO) == remover);
+
+// No consumidor
+while (inserir == remover);
+\end{lstlisting}
+
+Isso desperdiça ciclos de CPU, pois as threads continuam executando enquanto esperam que as condições sejam satisfeitas, em vez de liberar o processador para outras tarefas.
+
+\section{Solução com Mutexes}
+
+Para resolver os problemas de sincronização, podemos usar mutexes para proteger o acesso às seções críticas:
+
+\begin{lstlisting}[language=C]
+pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void *produtor(void *arg) {
+    int v;
+    for (v = 1;; v++) {
+        int can_insert = 0;
+
+        while (!can_insert) {
+            pthread_mutex_lock(&buffer_mutex);
+
+            if (((inserir + 1) % TAMANHO) != remover) {
+                can_insert = 1;
+                printf("Produzindo %d\n", v);
+                dados[inserir] = v;
+                inserir = (inserir + 1) % TAMANHO;
+            }
+
+            pthread_mutex_unlock(&buffer_mutex);
+
+            if (!can_insert) {
+                usleep(10000);  // Reduz uso de CPU
+            }
+        }
+
+        usleep(500000);
+    }
+    return NULL;
+}
+
+void *consumidor(void *arg) {
+    for (;;) {
+        int can_consume = 0;
+
+        while (!can_consume) {
+            pthread_mutex_lock(&buffer_mutex);
+
+            if (inserir != remover) {
+                can_consume = 1;
+                printf("%zu: Consumindo %d\n", (size_t)arg, dados[remover]);
+                remover = (remover + 1) % TAMANHO;
+            }
+
+            pthread_mutex_unlock(&buffer_mutex);
+
+            if (!can_consume) {
+                usleep(10000);  // Reduz uso de CPU
+            }
+        }
+    }
+    return NULL;
+}
+\end{lstlisting}
+
+Esta solução protege os acessos às variáveis compartilhadas usando mutexes, garantindo que apenas uma thread por vez execute a seção crítica. Adicionamos um sleep quando o buffer está cheio ou vazio para reduzir o consumo de CPU, mas ainda mantemos uma forma de busy waiting.
+
+\section{Problemas de Desempenho com Mutexes}
+
+A solução com mutexes resolve o problema de condições de corrida, mas apresenta problemas de desempenho:
+
+\subsection{Busy waiting modificado}
+Mesmo com o sleep dentro do loop, as threads ainda estão em um padrão de espera ocupada. Elas acordam periodicamente para verificar se a condição mudou, desperdiçando ciclos de CPU.
+
+\subsection{Overhead de bloqueio/desbloqueio}
+O mutex está sendo adquirido e liberado repetidamente em cada iteração do loop, mesmo quando a condição não permite o progresso. Isso gera um overhead desnecessário de operações de bloqueio e desbloqueio.
+
+\subsection{Falta de sinalização}
+Não há um mecanismo direto para que o produtor sinalize aos consumidores quando novos dados estiverem disponíveis, ou para os consumidores sinalizarem ao produtor quando houver espaço disponível, forçando verificações periódicas.
+
+\subsection{Escalabilidade limitada}
+À medida que o número de threads aumenta, a contenção pelo mutex também aumenta, resultando em maior overhead de sincronização e possivelmente maior contention dos recursos do sistema.
+
+\section{Solução com Semáforos}
+
+Os semáforos permitem uma sincronização mais eficiente, removendo a necessidade de busy waiting:
+
+\begin{lstlisting}[language=C]
+sem_t empty_slots;  // Contador de espaços vazios
+sem_t filled_slots; // Contador de espaços preenchidos
+pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Inicialização
+sem_init(&empty_slots, 0, TAMANHO - 1);
+sem_init(&filled_slots, 0, 0);
+
+void *produtor(void *arg) {
+    int v;
+    for (v = 1;; v++) {
+        // Espera até haver um slot vazio
+        sem_wait(&empty_slots);
+
+        // Protege a seção crítica
+        pthread_mutex_lock(&buffer_mutex);
+
+        printf("Produzindo %d\n", v);
+        dados[inserir] = v;
+        inserir = (inserir + 1) % TAMANHO;
+
+        pthread_mutex_unlock(&buffer_mutex);
+
+        // Sinaliza que há um novo item
+        sem_post(&filled_slots);
+
+        usleep(500000);
+    }
+    return NULL;
+}
+
+void *consumidor(void *arg) {
+    for (;;) {
+        // Espera até haver um item disponível
+        sem_wait(&filled_slots);
+
+        // Protege a seção crítica
+        pthread_mutex_lock(&buffer_mutex);
+
+        printf("%zu: Consumindo %d\n", (size_t)arg, dados[remover]);
+        remover = (remover + 1) % TAMANHO;
+
+        pthread_mutex_unlock(&buffer_mutex);
+
+        // Sinaliza que há um novo slot vazio
+        sem_post(&empty_slots);
+    }
+    return NULL;
+}
+\end{lstlisting}
+
+Esta solução usa dois semáforos:
+\begin{itemize}
+    \item \textbf{empty\_slots}: Conta o número de slots vazios no buffer.
+    \item \textbf{filled\_slots}: Conta o número de slots preenchidos no buffer.
+\end{itemize}
+
+Vantagens desta solução:
+\begin{itemize}
+    \item \textbf{Sem busy waiting}: As threads são bloqueadas pelo sistema operacional até que a operação \texttt{sem\_wait()} possa prosseguir.
+    \item \textbf{Sinalização direta}: Existe uma sinalização explícita quando novos itens são produzidos ou slots são liberados.
+    \item \textbf{Melhor eficiência}: As threads são bloqueadas quando não podem progredir, liberando o processador para outras tarefas.
+    \item \textbf{Melhor escalabilidade}: Reduz a contenção pelo mutex, pois as threads só acessam o mutex quando têm garantia de que podem progredir.
+\end{itemize}
+
+\section{Solução com Variáveis de Condição}
+
+As variáveis de condição oferecem outra abordagem eficiente para sincronização, permitindo que as threads aguardem condições específicas:
+
+\begin{lstlisting}[language=C]
+pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t not_empty = PTHREAD_COND_INITIALIZER;
+pthread_cond_t not_full = PTHREAD_COND_INITIALIZER;
+volatile int count = 0;  // Número de itens no buffer
+
+void *produtor(void *arg) {
+    int v;
+    for (v = 1;; v++) {
+        pthread_mutex_lock(&buffer_mutex);
+
+        // Espera enquanto o buffer estiver cheio
+        while (count == TAMANHO - 1)
+            pthread_cond_wait(&not_full, &buffer_mutex);
+
+        printf("Produzindo %d\n", v);
+        dados[inserir] = v;
+        inserir = (inserir + 1) % TAMANHO;
+        count++;
+
+        // Sinaliza que o buffer não está mais vazio
+        pthread_cond_signal(&not_empty);
+
+        pthread_mutex_unlock(&buffer_mutex);
+
+        usleep(500000);
+    }
+    return NULL;
+}
+
+void *consumidor(void *arg) {
+    for (;;) {
+        pthread_mutex_lock(&buffer_mutex);
+
+        // Espera enquanto o buffer estiver vazio
+        while (count == 0)
+            pthread_cond_wait(&not_empty, &buffer_mutex);
+
+        printf("%zu: Consumindo %d\n", (size_t)arg, dados[remover]);
+        remover = (remover + 1) % TAMANHO;
+        count--;
+
+        // Sinaliza que o buffer não está mais cheio
+        pthread_cond_signal(&not_full);
+
+        pthread_mutex_unlock(&buffer_mutex);
+    }
+    return NULL;
+}
+\end{lstlisting}
+
+Esta solução utiliza:
+\begin{itemize}
+    \item Um mutex para proteger o acesso às variáveis compartilhadas.
+    \item Duas variáveis de condição:
+    \begin{itemize}
+        \item \textbf{not\_empty}: Sinalizada quando itens são adicionados ao buffer.
+        \item \textbf{not\_full}: Sinalizada quando itens são removidos do buffer.
+    \end{itemize}
+    \item Uma variável \texttt{count} que mantém o número atual de itens no buffer.
+\end{itemize}
+
+Vantagens desta solução:
+\begin{itemize}
+    \item \textbf{Eficiência}: Como os semáforos, não há busy waiting. As threads são bloqueadas eficientemente.
+    \item \textbf{Flexibilidade}: As variáveis de condição permitem verificar predicados mais complexos além de simples contadores.
+    \item \textbf{Atomicidade}: A função \texttt{pthread\_cond\_wait()} libera o mutex automaticamente enquanto a thread está bloqueada e o readquire quando ela acorda, garantindo atomicidade.
+    \item \textbf{Sinalização precisa}: As threads são sinalizadas exatamente quando as condições mudam, evitando verificações desnecessárias.
+\end{itemize}
+
+\section{Conclusão}
+
+O problema do produtor-consumidor ilustra desafios fundamentais de sincronização em sistemas concorrentes. Comparando as soluções:
+
+\begin{itemize}
+    \item A solução original tem problemas de corrida críticos e é ineficiente devido ao busy waiting.
+    \item A solução com mutex resolve os problemas de corrida, mas mantém o problema de eficiência com um tipo modificado de busy waiting.
+    \item As soluções com semáforos e variáveis de condição resolvem tanto os problemas de corrida quanto de eficiência, evitando o busy waiting.
+\end{itemize}
+
+Tanto semáforos quanto variáveis de condição são adequados para este problema, com variáveis de condição oferecendo maior flexibilidade para condições complexas. A escolha entre eles geralmente depende dos requisitos específicos do sistema e das preferências de design.
+
+\end{document}

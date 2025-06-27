@@ -8,6 +8,7 @@ compile:
 	gcc -o main_atomicLanguage main_atomicLanguage.c -pthread -std=c11
 	gcc -o main_barrier main_barrier.c -pthread
 	gcc -o main_sync main_sync.c -pthread
+	gcc -o main_pragma main_pragma.c -pthread
 
 run: compile
 	@echo "Executando versão padrão (com otimizações):"
@@ -15,6 +16,9 @@ run: compile
 	@echo ""
 	@echo "Executando versão sem otimizações:"
 	./main_noopt
+	@echo ""
+	@echo "Executando versão com pragma optimize off/on:"
+	./main_pragma
 	@echo ""
 	@echo "Executando versão com operações atômicas:"
 	./main_atomic
@@ -30,4 +34,4 @@ run: compile
 	@echo ""
 
 clean:
-	rm -f main main_noopt main_atomic main_atomicLanguage main_barrier main_sync
+	rm -f main main_noopt main_atomic main_atomicLanguage main_barrier main_sync main_pragma

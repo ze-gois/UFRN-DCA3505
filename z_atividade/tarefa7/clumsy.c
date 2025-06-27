@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 /* whose turn is it? */
 int turn;
@@ -20,10 +21,8 @@ int shared_counter = 0;
 
 /* process is 0 or 1 */
 void enter_region(int process_id){
-    /* number of the other process */
-    int other;
     /* the opposite of process */
-    other = 1 - process_id;
+    int other = 1 - process_id;
     /* show that you are interested */
     interested[process_id] = TRUE;
     /* set flag */
@@ -67,14 +66,8 @@ int main() {
     pthread_t threads[N];
     int process_ids[N];
 
-#if OPTIMIZED
     printf("Demonstração do algoritmo de Peterson (versão original COM otimizações)\n");
     printf("Este exemplo poderá falhar devido a otimizações do compilador e reordenamento de memória\n");
-#else
-    printf("Demonstração do algoritmo de Peterson (versão original SEM otimizações)\n");
-    printf("Este exemplo poderá funcionar pois as otimizações do compilador estão desativadas (-O0)\n");
-    printf("A flag -O0 instrui o compilador a não realizar otimizações, preservando a ordem das operações\n");
-#endif
 
     // Inicializar valores
     turn = 0;
@@ -102,19 +95,10 @@ int main() {
 
     if (shared_counter == N * MAX_COUNT) {
         printf("Sucesso! O algoritmo funcionou corretamente.\n");
-#if OPTIMIZED
         printf("Isto é surpreendente com as otimizações ativadas!\n");
-#else
-        printf("Como esperado, sem otimizações (-O0) o algoritmo pode funcionar bem.\n");
-        printf("Isso mostra que as otimizações do compilador são uma das causas do problema!\n");
-#endif
     } else {
         printf("Falha! O algoritmo não garantiu exclusão mútua.\n");
-#if OPTIMIZED
         printf("Isso demonstra os problemas com compiladores e processadores modernos.\n");
-#else
-        printf("Mesmo sem otimizações, problemas de reordenamento no processador podem ocorrer.\n");
-#endif
     }
 
     return 0;
